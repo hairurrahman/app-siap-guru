@@ -292,14 +292,14 @@ export default function App() {
               {isLoggingIn ? "Memverifikasi..." : "Masuk Aplikasi"}
             </button>
 
-            <div className="text-center mt-4 text-[10px] text-slate-400 font-bold bg-slate-50 p-2 rounded-lg border border-slate-100">
-               Info Default: Username dan Password sama dengan nama kelas (contoh: <b>guru1</b> untuk Kelas 1)
+           <div className="mt-6 text-center text-xs font-medium text-slate-400 bg-slate-50 p-3 rounded-lg border border-slate-100">
+              Copyright &copy; 2026 Hairur Rahman
             </div>
           </form>
         </div>
       </div>
     );
-  }
+}
 
   const mainNavItems = [
     { id: 'dashboard', icon: Home, label: 'Dashboard' },
