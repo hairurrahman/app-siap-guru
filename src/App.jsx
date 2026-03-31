@@ -32,6 +32,10 @@ const MAPEL_OPTIONS = [
 
 const KELAS_OPTIONS = ['Kelas 1', 'Kelas 2', 'Kelas 3', 'Kelas 4', 'Kelas 5', 'Kelas 6'];
 
+const TAHUN_OPTIONS = [
+  '2025/2026','2026/2027','2027/2028','2028/2029','2029/2030','2030/2031'
+];
+
 // ==========================================
 // UTILITIES
 // ==========================================
@@ -67,9 +71,34 @@ const exportToExcel = async (data, filename, showToast) => {
   }
 };
 
-// ==========================================
-// MAIN APP COMPONENT
-// ==========================================
+const loadJsPDF = async () => {
+  if (window.jspdf) return window.jspdf.jsPDF;
+  if (window.jsPDF) return window.jsPDF;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    script.onload = () => {
+      const JsPDF = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+      if (JsPDF) resolve(JsPDF);
+      else reject(new Error("Gagal memuat jsPDF"));
+    };
+    script.onerror = () => reject(new Error("Gagal memuat library PDF"));
+    document.head.appendChild(script);
+  });
+};
+
+const loadAutoTable = async () => {
+  if (window.jspdf && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable) return;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Gagal memuat autoTable"));
+    document.head.appendChild(script);
+  });
+};
+
+
 export default function App() {
   const [isEntered, setIsEntered] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -87,13 +116,16 @@ export default function App() {
   const [dbId, setDbId] = useState(''); // Contoh: 'db_kelas_1'
 
   // Global Context Dropdowns (Kelas dihilangkan dari dropdown karena sudah fix per guru)
-  const [activeTahun, setActiveTahun] = useState('2026/2027');
+  const [activeTahun, setActiveTahun] = useState('2025/2026');
   const [activeSemester, setActiveSemester] = useState('Ganjil');
 
   // Data States
   const [settings, setSettings] = useState({ 
     logoUrl: '', 
     namaSekolah: 'SD NEGERI NUSANTARA',
+    namaKepalaSekolah: '',
+    nipKepalaSekolah: '',
+    kotaTandatangan: '',
     username: '',
     password: ''
   });
@@ -132,6 +164,13 @@ export default function App() {
         if(data.logoUrl) localStorage.setItem('appLogoSekolah', data.logoUrl);
       }
     });
+    const unsubTahunSemester = onSnapshot(doc(db, 'users', dbId, 'data', 'tahunSemester'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.tahun) setActiveTahun(d.tahun);
+        if (d.semester) setActiveSemester(d.semester);
+      }
+    });
     const unsubProfile = onSnapshot(doc(db, 'users', dbId, 'data', 'profile'), (doc) => {
       if (doc.exists()) setProfile(doc.data());
     });
@@ -152,7 +191,7 @@ export default function App() {
     });
 
     return () => {
-      unsubSettings(); unsubProfile(); unsubStudents(); unsubAttendance(); unsubJournals(); unsubTools(); unsubGrades();
+      unsubSettings(); unsubTahunSemester(); unsubProfile(); unsubStudents(); unsubAttendance(); unsubJournals(); unsubTools(); unsubGrades();
     };
   }, [isEntered, dbId]);
 
@@ -358,10 +397,18 @@ export default function App() {
             <Shield size={14} /> {loggedInKelas}
           </div>
 
-          <select value={activeTahun} onChange={(e)=>setActiveTahun(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1.5 rounded-lg text-xs font-bold outline-none focus:border-indigo-500">
-            {['2026/2027','2027/2028','2028/2029','2029/2030'].map(t => <option key={t} value={t}>{t}</option>)}
+          <select value={activeTahun} onChange={(e)=>{
+            const val = e.target.value;
+            setActiveTahun(val);
+            setDoc(doc(db, 'users', dbId, 'data', 'tahunSemester'), { tahun: val, semester: activeSemester }, { merge: true });
+          }} className="bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1.5 rounded-lg text-xs font-bold outline-none focus:border-indigo-500">
+            {TAHUN_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={activeSemester} onChange={(e)=>setActiveSemester(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1.5 rounded-lg text-xs font-bold outline-none focus:border-indigo-500">
+          <select value={activeSemester} onChange={(e)=>{
+            const val = e.target.value;
+            setActiveSemester(val);
+            setDoc(doc(db, 'users', dbId, 'data', 'tahunSemester'), { tahun: activeTahun, semester: val }, { merge: true });
+          }} className="bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1.5 rounded-lg text-xs font-bold outline-none focus:border-indigo-500">
             <option value="Ganjil">Ganjil</option>
             <option value="Genap">Genap</option>
           </select>
@@ -405,8 +452,8 @@ export default function App() {
         <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50">
           {activeTab === 'dashboard' && <Dashboard profile={profile} students={classStudents} attendance={classAttendance} journals={classJournals} ctx={filterCtx} setActiveTab={setActiveTab} />}
           {activeTab === 'students' && <StudentSection students={classStudents} ctx={filterCtx} showToast={showToast} />}
-          {activeTab === 'attendance' && <AttendanceSection students={classStudents} attendance={classAttendance} ctx={filterCtx} showToast={showToast} />}
-          {activeTab === 'journal' && <JournalSection journals={classJournals} ctx={filterCtx} showToast={showToast} />}
+          {activeTab === 'attendance' && <AttendanceSection students={classStudents} attendance={classAttendance} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
+          {activeTab === 'journal' && <JournalSection journals={classJournals} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
           {activeTab === 'tools' && <ToolsSection tools={classTools} ctx={filterCtx} showToast={showToast} />}
           {activeTab === 'grades' && <GradesSection students={classStudents} grades={classGrades} ctx={filterCtx} showToast={showToast} />}
           {activeTab === 'settings' && <SettingsSection settings={settings} profile={profile} ctx={filterCtx} showToast={showToast} />}
@@ -605,6 +652,38 @@ const StudentSection = ({ students, ctx, showToast }) => {
     e.target.value = null;
   };
 
+  const handleDownloadTemplateSiswa = async () => {
+    try {
+      const XLSX = await loadXLSX();
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Nama', 'NIS', 'NISN', 'JK'],
+        ['Contoh Nama Siswa', '1234', '9876543210', 'L'],
+        ['Contoh Nama Siswi', '1235', '9876543211', 'P'],
+      ]);
+      ws['!cols'] = [{wch:30},{wch:12},{wch:14},{wch:5}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Template Siswa');
+      XLSX.writeFile(wb, 'Template_Data_Siswa.xlsx');
+    } catch(err) { showToast("Gagal membuat template", "error"); }
+  };
+
+  const handleDownloadDataSiswa = async () => {
+    if (students.length === 0) return showToast("Belum ada data siswa", "error");
+    try {
+      const XLSX = await loadXLSX();
+      const data = [
+        ['Nama', 'NIS', 'NISN', 'JK'],
+        ...students.map(s => [s.nama, s.nis || '', s.nisn || '', s.jk])
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      ws['!cols'] = [{wch:30},{wch:12},{wch:14},{wch:5}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
+      XLSX.writeFile(wb, `Data_Siswa_${ctx.loggedInKelas.replace(' ','_')}_${ctx.activeTahun.replace('/','_')}.xlsx`);
+      showToast("Data siswa berhasil diunduh!", "success");
+    } catch(err) { showToast("Gagal mengunduh data", "error"); }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
@@ -613,7 +692,10 @@ const StudentSection = ({ students, ctx, showToast }) => {
           <p className="text-slate-500 font-medium mt-1">Tahun {ctx.activeTahun} • Total: {students.length} Siswa</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-           <label className="flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-xl cursor-pointer hover:bg-emerald-100 font-bold transition border border-emerald-100">
+           <button onClick={handleDownloadTemplateSiswa} className="flex items-center justify-center gap-2 bg-slate-50 text-slate-600 px-4 py-2.5 rounded-xl font-bold transition border border-slate-200 hover:bg-slate-100 text-sm">
+              <Download size={18} /> Template XLSX
+           </button>
+           <label className="flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-xl cursor-pointer hover:bg-emerald-100 font-bold transition border border-emerald-100 text-sm">
               <Upload size={18} /> Import Excel (.xlsx)
               <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
            </label>
@@ -699,9 +781,10 @@ const StudentSection = ({ students, ctx, showToast }) => {
 // ==========================================
 // 3. ATTENDANCE COMPONENT
 // ==========================================
-const AttendanceSection = ({ students, attendance, ctx, showToast }) => {
+const AttendanceSection = ({ students, attendance, ctx, showToast, settings, profile }) => {
   const [date, setDate] = useState(getTodayDate());
   const [exportMonth, setExportMonth] = useState(getTodayDate().substring(5, 7));
+  const [exportYear, setExportYear] = useState(getTodayDate().substring(0, 4));
 
   const handleStatusChange = async (siswaId, status) => {
     const existing = attendance.find(a => a.siswaId === siswaId && a.tanggal === date);
@@ -739,21 +822,187 @@ const AttendanceSection = ({ students, attendance, ctx, showToast }) => {
     }
   };
 
-  const handleExport = () => {
-    const dataBulanIni = attendance.filter(a => a.tanggal.substring(5, 7) === exportMonth);
+  const getLastWorkdayOfMonth = (year, month) => {
+    let d = new Date(year, month, 0);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+    return d;
+  };
+
+  const buildSignatureBlock = (doc, kelas, kota, tanggalTTD, namaKepala, nipKepala, namaGuru, nipGuru, startY) => {
+    const pageW = doc.internal.pageSize.getWidth();
+    const left = 14;
+    const rightX = pageW / 2 + 10;
+    doc.setFontSize(10);
+    doc.text('Mengetahui,', left + 20, startY, { align: 'center' });
+    doc.text('Kepala Sekolah', left + 20, startY + 5, { align: 'center' });
+    doc.text(`${kota}, ${tanggalTTD}`, rightX + 20, startY, { align: 'center' });
+    doc.text(`Guru ${kelas}`, rightX + 20, startY + 5, { align: 'center' });
+    doc.text(namaKepala, left + 20, startY + 28, { align: 'center' });
+    doc.setDrawColor(0);
+    doc.line(left, startY + 29, left + 40, startY + 29);
+    doc.text(`NIP. ${nipKepala}`, left + 20, startY + 33, { align: 'center' });
+    doc.text(namaGuru, rightX + 20, startY + 28, { align: 'center' });
+    doc.line(rightX, startY + 29, rightX + 40, startY + 29);
+    doc.text(`NIP. ${nipGuru}`, rightX + 20, startY + 33, { align: 'center' });
+  };
+
+  const handleExport = async () => {
+    const year = parseInt(exportYear);
+    const month = parseInt(exportMonth);
+    const dataBulanIni = attendance.filter(a => {
+      const [y, m] = a.tanggal.split('-').map(Number);
+      return y === year && m === month;
+    });
     if (dataBulanIni.length === 0) return showToast("Tidak ada data absensi di bulan ini", "error");
 
-    const uniqueDates = [...new Set(dataBulanIni.map(a => a.tanggal))];
-    const exportData = students.map(s => {
-      let hadir=0, sakit=0, ijin=0, alpa=0; 
-      uniqueDates.forEach(d => {
-        const att = dataBulanIni.find(a => a.siswaId === s.id && a.tanggal === d);
-        const st = att ? att.status : '-';
-        if(st==='Hadir') hadir++; if(st==='Sakit') sakit++; if(st==='Izin') ijin++; if(st==='Alpha') alpa++; 
+    const uniqueDates = [...new Set(dataBulanIni.map(a => a.tanggal))].sort();
+    const bulanNama = new Date(year, month - 1, 1).toLocaleString('id-ID', { month: 'long' });
+    const lastWorkday = getLastWorkdayOfMonth(year, month);
+    const tanggalTTD = lastWorkday.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const kota = settings.kotaTandatangan || '___________';
+    const namaKepala = settings.namaKepalaSekolah || '___________________________';
+    const nipKepala = settings.nipKepalaSekolah || '___________________________';
+    const namaGuru = profile.nama || '___________________________';
+    const nipGuru = profile.nip || '___________________________';
+    const namaSekolah = settings.namaSekolah || 'SD NEGERI NUSANTARA';
+
+    try {
+      const JsPDF = await loadJsPDF();
+      await loadAutoTable();
+      const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+
+      doc.setFontSize(13); doc.setFont(undefined, 'bold');
+      doc.text(namaSekolah, pageW / 2, 14, { align: 'center' });
+      doc.setFontSize(11);
+      doc.text('REKAP ABSENSI SISWA', pageW / 2, 20, { align: 'center' });
+      doc.setFont(undefined, 'normal'); doc.setFontSize(9);
+      doc.text(`${ctx.loggedInKelas}  |  Bulan: ${bulanNama} ${year}  |  Semester: ${ctx.activeSemester} (${ctx.activeTahun})`, pageW / 2, 26, { align: 'center' });
+
+      const head = [['No', 'Nama Siswa', ...uniqueDates.map(d => d.substring(8,10)), 'H', 'I', 'S', 'A']];
+      const body = students.map((s, idx) => {
+        let h=0, i=0, sk=0, a=0;
+        const cells = uniqueDates.map(d => {
+          const att = dataBulanIni.find(x => x.siswaId === s.id && x.tanggal === d);
+          const st = att ? att.status : '';
+          if(st==='Hadir') h++; if(st==='Izin') i++; if(st==='Sakit') sk++; if(st==='Alpha') a++;
+          return st==='Hadir'?'H':st==='Sakit'?'S':st==='Izin'?'I':st==='Alpha'?'A':'';
+        });
+        return [idx+1, s.nama, ...cells, h, i, sk, a];
       });
-      return { "Nama Siswa": s.nama, "Hadir": hadir, "Ijin": ijin, "Sakit": sakit, "Alpa": alpa };
+
+      doc.autoTable({
+        head, body, startY: 30,
+        styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
+        columnStyles: { 1: { halign: 'left', cellWidth: 40 } },
+        headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+        alternateRowStyles: { fillColor: [245, 245, 255] },
+        margin: { left: 10, right: 10 },
+      });
+
+      const finalY = doc.lastAutoTable.finalY + 5;
+      doc.setFontSize(8);
+      doc.text('Keterangan: H=Hadir, I=Izin, S=Sakit, A=Alpha', 14, finalY);
+
+      const sigY = finalY + 8;
+      const needNewPage = sigY + 38 > doc.internal.pageSize.getHeight();
+      if (needNewPage) doc.addPage();
+      buildSignatureBlock(doc, ctx.loggedInKelas, kota, tanggalTTD, namaKepala, nipKepala, namaGuru, nipGuru, needNewPage ? 20 : sigY);
+
+      doc.save(`Rekap_Absensi_${ctx.loggedInKelas.replace(' ','_')}_${bulanNama}_${year}.pdf`);
+      showToast(`PDF Rekap Absensi ${bulanNama} ${year} berhasil diunduh!`, "success");
+    } catch(err) {
+      console.error(err);
+      showToast("Gagal membuat PDF: " + err.message, "error");
+    }
+  };
+
+  const handleExportSemester = async () => {
+    const semesterMonths = ctx.activeSemester === 'Ganjil' ? [7,8,9,10,11,12] : [1,2,3,4,5,6];
+    const tahunParts = ctx.activeTahun.split('/');
+    const yearForMonth = ctx.activeSemester === 'Ganjil' ? parseInt(tahunParts[0]) : parseInt(tahunParts[1]);
+
+    const dataSemester = attendance.filter(a => {
+      const [y, m] = a.tanggal.split('-').map(Number);
+      return y === yearForMonth && semesterMonths.includes(m);
     });
-    exportToExcel(exportData, `Rekap_Absensi_${ctx.loggedInKelas}_Bulan_${exportMonth}`, showToast);
+    if (dataSemester.length === 0) return showToast("Tidak ada data absensi semester ini", "error");
+
+    try {
+      const XLSX = await loadXLSX();
+
+      // Build header rows: row1 = [No, Nama, Jan, , , , Feb, ...], row2 = [,,H,S,I,A,H,S,I,A,...]
+      const activeMonths = semesterMonths.filter(m => {
+        return dataSemester.some(a => parseInt(a.tanggal.split('-')[1]) === m);
+      });
+
+      const row1 = ['No', 'Nama Siswa'];
+      const row2 = ['', ''];
+      activeMonths.forEach(m => {
+        const nama = new Date(yearForMonth, m-1, 1).toLocaleString('id-ID', { month: 'long' });
+        row1.push(nama, '', '', '');
+        row2.push('H', 'S', 'I', 'A');
+      });
+      row1.push('Total H', 'Total S', 'Total I', 'Total A');
+      row2.push('', '', '', '');
+
+      const dataRows = students.map((s, idx) => {
+        const row = [idx + 1, s.nama];
+        let totalH=0, totalS=0, totalI=0, totalA=0;
+        activeMonths.forEach(m => {
+          const dataBulan = dataSemester.filter(a => parseInt(a.tanggal.split('-')[1]) === m);
+          let h=0, sk=0, i=0, a=0;
+          dataBulan.forEach(att => {
+            if (att.siswaId !== s.id) return;
+            if(att.status==='Hadir') h++;
+            else if(att.status==='Sakit') sk++;
+            else if(att.status==='Izin') i++;
+            else if(att.status==='Alpha') a++;
+          });
+          row.push(h, sk, i, a);
+          totalH+=h; totalS+=sk; totalI+=i; totalA+=a;
+        });
+        row.push(totalH, totalS, totalI, totalA);
+        return row;
+      });
+
+      const sheetData = [
+        [`REKAP ABSENSI SEMESTER ${ctx.activeSemester.toUpperCase()} - ${ctx.loggedInKelas} - ${ctx.activeTahun}`],
+        row1,
+        row2,
+        ...dataRows,
+        [],
+        ['Keterangan: H=Hadir, S=Sakit, I=Izin, A=Alpha'],
+      ];
+
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+      // Merge cells for month headers
+      const merges = [];
+      let col = 2;
+      activeMonths.forEach(() => {
+        merges.push({ s: { r: 1, c: col }, e: { r: 1, c: col + 3 } });
+        col += 4;
+      });
+      // Merge No and Nama headers vertically row1-row2
+      merges.push({ s: { r: 1, c: 0 }, e: { r: 2, c: 0 } });
+      merges.push({ s: { r: 1, c: 1 }, e: { r: 2, c: 1 } });
+      ws['!merges'] = merges;
+
+      // Column widths
+      const wscols = [{ wch: 5 }, { wch: 28 }];
+      activeMonths.forEach(() => { [6,5,5,5].forEach(w => wscols.push({ wch: w })); });
+      [8,8,8,8].forEach(w => wscols.push({ wch: w }));
+      ws['!cols'] = wscols;
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Sem ${ctx.activeSemester}`);
+      XLSX.writeFile(wb, `Rekap_Absensi_Sem${ctx.activeSemester}_${ctx.loggedInKelas.replace(' ','_')}_${ctx.activeTahun.replace('/','_')}.xlsx`);
+      showToast(`Rekap Semester ${ctx.activeSemester} berhasil diunduh!`, "success");
+    } catch(err) {
+      console.error(err);
+      showToast("Gagal membuat file Excel: " + err.message, "error");
+    }
   };
 
   return (
@@ -773,7 +1022,7 @@ const AttendanceSection = ({ students, attendance, ctx, showToast }) => {
         <button onClick={handleHadirSemua} className="flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-emerald-600 transition shadow-md shadow-emerald-200">
            <CheckSquare size={16}/> Hadir Semua
         </button>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
           <select value={exportMonth} onChange={(e) => setExportMonth(e.target.value)} className="bg-white border border-indigo-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
             {Array.from({length: 12}, (_, i) => {
               const m = (i + 1).toString().padStart(2, '0');
@@ -781,8 +1030,14 @@ const AttendanceSection = ({ students, attendance, ctx, showToast }) => {
               return <option key={m} value={m}>{name}</option>
             })}
           </select>
+          <select value={exportYear} onChange={(e) => setExportYear(e.target.value)} className="bg-white border border-indigo-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
+            {[2025,2026,2027,2028,2029,2030,2031].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
           <button onClick={handleExport} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
-             <Download size={16}/> Export .xlsx
+             <Download size={16}/> Rekap Bulanan (PDF)
+          </button>
+          <button onClick={handleExportSemester} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-emerald-700 transition shadow-md shadow-emerald-200">
+             <Download size={16}/> Rekap Semester (XLSX)
           </button>
         </div>
       </div>
@@ -837,8 +1092,10 @@ const AttendanceSection = ({ students, attendance, ctx, showToast }) => {
 // ==========================================
 // 4. JOURNAL COMPONENT
 // ==========================================
-const JournalSection = ({ journals, ctx, showToast }) => {
-  const [formData, setFormData] = useState({ tanggal: getTodayDate(), mapel: MAPEL_OPTIONS[0], materi: '', kegiatan: '', asesmen: '' });
+const JournalSection = ({ journals, ctx, showToast, settings, profile }) => {
+  const [formData, setFormData] = useState({ tanggal: getTodayDate(), mapel: MAPEL_OPTIONS[0], tujuanPembelajaran: '', materi: '', kegiatan: '', asesmen: '' });
+  const [exportMonth, setExportMonth] = useState(getTodayDate().substring(5, 7));
+  const [exportYear, setExportYear] = useState(getTodayDate().substring(0, 4));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -847,7 +1104,7 @@ const JournalSection = ({ journals, ctx, showToast }) => {
     const newJournal = { ...formData, kelas: ctx.loggedInKelas, tahun: ctx.activeTahun, semester: ctx.activeSemester };
     await setDoc(doc(db, 'users', ctx.dbId, 'journals', newId), newJournal);
     showToast("Jurnal berhasil disimpan");
-    setFormData({ ...formData, materi: '', kegiatan: '', asesmen: '' });
+    setFormData({ ...formData, tujuanPembelajaran: '', materi: '', kegiatan: '', asesmen: '' });
   };
 
   const handleDelete = async (id) => {
@@ -855,13 +1112,178 @@ const JournalSection = ({ journals, ctx, showToast }) => {
     showToast("Jurnal dihapus");
   };
 
-  const handleExportJournal = () => {
-    if(journals.length === 0) return showToast("Tidak ada data jurnal", "error");
-    const exportData = journals.map(j => ({
-      "Tanggal": j.tanggal, "Mata Pelajaran": j.mapel, "Materi": j.materi,
-      "Aktivitas": j.kegiatan || '-', "Asesmen": j.asesmen || '-'
-    }));
-    exportToExcel(exportData, `Jurnal_Mengajar_${ctx.loggedInKelas}`, showToast);
+  const getLastWorkdayOfMonth = (year, month) => {
+    let d = new Date(year, month, 0);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+    return d;
+  };
+
+  const handleExportJournal = async () => {
+    const year = parseInt(exportYear);
+    const month = parseInt(exportMonth);
+    const dataBulan = journals.filter(j => {
+      if (!j.tanggal || j.tanggal.length < 7) return false;
+      const jYear = parseInt(j.tanggal.substring(0, 4));
+      const jMonth = parseInt(j.tanggal.substring(5, 7));
+      return jYear === year && jMonth === month;
+    });
+    if (dataBulan.length === 0) {
+      showToast("Tidak ada data jurnal di bulan ini", "error");
+      return;
+    }
+
+    const bulanNama = new Date(year, month - 1, 1).toLocaleString('id-ID', { month: 'long' });
+    const lastWorkday = getLastWorkdayOfMonth(year, month);
+    const tanggalTTD = lastWorkday.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    const kota = settings.kotaTandatangan || '___________';
+    const namaKepala = settings.namaKepalaSekolah || '___________________________';
+    const nipKepala = settings.nipKepalaSekolah || '___________________________';
+    const namaGuru = profile.nama || '___________________________';
+    const nipGuru = profile.nip || '___________________________';
+    const namaSekolah = settings.namaSekolah || 'SD NEGERI NUSANTARA';
+
+    const sorted = [...dataBulan].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+
+    try {
+      const JsPDF = await loadJsPDF();
+      await loadAutoTable();
+      const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+
+      doc.setFontSize(13); doc.setFont(undefined, 'bold');
+      doc.text(namaSekolah, pageW / 2, 14, { align: 'center' });
+      doc.setFontSize(11);
+      doc.text('JURNAL MENGAJAR', pageW / 2, 20, { align: 'center' });
+      doc.setFont(undefined, 'normal'); doc.setFontSize(9);
+      doc.text(`${ctx.loggedInKelas}  |  Bulan: ${bulanNama} ${year}  |  Semester: ${ctx.activeSemester} (${ctx.activeTahun})`, pageW / 2, 26, { align: 'center' });
+
+      const head = [['No', 'Tanggal', 'Mata Pelajaran', 'Tujuan Pembelajaran', 'Materi Pokok', 'Aktivitas Siswa', 'Asesmen']];
+      const body = sorted.map((j, idx) => [
+        idx + 1, j.tanggal, j.mapel,
+        j.tujuanPembelajaran || '-', j.materi,
+        j.kegiatan || '-', j.asesmen || '-'
+      ]);
+
+      doc.autoTable({
+        head, body, startY: 30,
+        styles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 22 },
+          2: { cellWidth: 32 },
+          3: { cellWidth: 55 },
+          4: { cellWidth: 38 },
+          5: { cellWidth: 55 },
+          6: { cellWidth: 35 },
+        },
+        headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+        alternateRowStyles: { fillColor: [245, 245, 255] },
+        margin: { left: 10, right: 10 },
+      });
+
+      const finalY = doc.lastAutoTable.finalY + 10;
+      const needNewPage = finalY + 38 > doc.internal.pageSize.getHeight();
+      if (needNewPage) doc.addPage();
+      const sigY = needNewPage ? 20 : finalY;
+
+      const left = 14; const rightX = pageW / 2 + 10;
+      doc.setFontSize(10);
+      doc.text('Mengetahui,', left + 20, sigY, { align: 'center' });
+      doc.text('Kepala Sekolah', left + 20, sigY + 5, { align: 'center' });
+      doc.text(`${kota}, ${tanggalTTD}`, rightX + 20, sigY, { align: 'center' });
+      doc.text(`Guru ${ctx.loggedInKelas}`, rightX + 20, sigY + 5, { align: 'center' });
+      doc.text(namaKepala, left + 20, sigY + 28, { align: 'center' });
+      doc.setDrawColor(0);
+      doc.line(left, sigY + 29, left + 40, sigY + 29);
+      doc.text(`NIP. ${nipKepala}`, left + 20, sigY + 33, { align: 'center' });
+      doc.text(namaGuru, rightX + 20, sigY + 28, { align: 'center' });
+      doc.line(rightX, sigY + 29, rightX + 40, sigY + 29);
+      doc.text(`NIP. ${nipGuru}`, rightX + 20, sigY + 33, { align: 'center' });
+
+      doc.save(`Jurnal_Mengajar_${ctx.loggedInKelas.replace(' ','_')}_${bulanNama}_${year}.pdf`);
+      showToast(`PDF Jurnal ${bulanNama} ${year} berhasil diunduh!`, "success");
+    } catch(err) {
+      console.error(err);
+      showToast("Gagal membuat PDF: " + err.message, "error");
+    }
+  };
+
+  const handleDownloadTemplateJurnal = async () => {
+    try {
+      const XLSX = await loadXLSX();
+      // Use plain text date string as cell value so Excel doesn't convert it to serial
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Tanggal', 'Mata Pelajaran', 'TP', 'Materi Pokok', 'Aktivitas Siswa', 'Asesmen'],
+        ['2025-07-14', MAPEL_OPTIONS[0], 'Siswa mampu ...', 'Contoh materi', 'Diskusi kelompok', 'Tes lisan'],
+      ]);
+      // Force Tanggal column as text
+      ws['A2'] = { t: 's', v: '2025-07-14' };
+      ws['!cols'] = [{wch:14},{wch:28},{wch:40},{wch:30},{wch:35},{wch:25}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Template Jurnal');
+      XLSX.writeFile(wb, 'Template_Jurnal_Mengajar.xlsx');
+    } catch(err) { showToast("Gagal membuat template", "error"); }
+  };
+
+  // Convert Excel serial date number to YYYY-MM-DD string
+  const excelSerialToDate = (serial) => {
+    const utc_days = Math.floor(serial - 25569);
+    const date = new Date(utc_days * 86400 * 1000);
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const handleImportJurnal = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const XLSX = await loadXLSX();
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          // cellDates:false so we get raw values and handle dates ourselves
+          const wb = XLSX.read(evt.target.result, { type: 'binary', cellDates: false });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const data = XLSX.utils.sheet_to_json(ws, { raw: true });
+          if (data.length === 0) return showToast("File Excel kosong", "error");
+          let count = 0;
+          for (const row of data) {
+            let tanggal = row['Tanggal'];
+            if (!tanggal) continue;
+            // If numeric (Excel serial date), convert to YYYY-MM-DD
+            if (typeof tanggal === 'number') {
+              tanggal = excelSerialToDate(tanggal);
+            } else {
+              tanggal = tanggal.toString().trim();
+            }
+            // Validate YYYY-MM-DD pattern
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) continue;
+            const mapel = row['Mata Pelajaran'] ? row['Mata Pelajaran'].toString().trim() : '';
+            const materi = row['Materi Pokok'] ? row['Materi Pokok'].toString().trim() : '';
+            if (!materi) continue;
+            const newId = generateId();
+            await setDoc(doc(db, 'users', ctx.dbId, 'journals', newId), {
+              tanggal,
+              mapel: mapel || MAPEL_OPTIONS[0],
+              tujuanPembelajaran: (row['TP'] || '').toString(),
+              materi,
+              kegiatan: (row['Aktivitas Siswa'] || '').toString(),
+              asesmen: (row['Asesmen'] || '').toString(),
+              kelas: ctx.loggedInKelas,
+              tahun: ctx.activeTahun,
+              semester: ctx.activeSemester,
+            });
+            count++;
+          }
+          if (count === 0) return showToast("Tidak ada data valid. Pastikan format tanggal YYYY-MM-DD", "error");
+          showToast(`${count} jurnal berhasil diimport!`, "success");
+        } catch(err) { showToast("Format file tidak sesuai", "error"); }
+      };
+      reader.readAsBinaryString(file);
+    } catch(err) { showToast("Gagal memuat library Excel", "error"); }
+    e.target.value = null;
   };
 
   return (
@@ -871,15 +1293,36 @@ const JournalSection = ({ journals, ctx, showToast }) => {
           <h2 className="text-2xl font-black text-slate-800">Jurnal Mengajar {ctx.loggedInKelas}</h2>
           <p className="text-slate-500 font-medium mt-1">Catatan pembelajaran {ctx.activeSemester} ({ctx.activeTahun})</p>
         </div>
-        <button onClick={handleExportJournal} className="flex items-center gap-2 text-sm text-indigo-700 font-bold bg-indigo-50 border border-indigo-100 px-4 py-2.5 rounded-xl hover:bg-indigo-100 transition shadow-sm">
-          <Download size={18} /> Export (.xlsx)
-        </button>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <select value={exportMonth} onChange={(e) => setExportMonth(e.target.value)} className="bg-slate-50 border border-slate-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
+            {Array.from({length: 12}, (_, i) => {
+              const m = (i + 1).toString().padStart(2, '0');
+              const name = new Date(2000, i, 1).toLocaleString('id-ID', { month: 'long' });
+              return <option key={m} value={m}>{name}</option>
+            })}
+          </select>
+          <select value={exportYear} onChange={(e) => setExportYear(e.target.value)} className="bg-slate-50 border border-slate-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
+            {[2025,2026,2027,2028,2029,2030,2031].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={handleExportJournal} className="flex items-center gap-2 text-sm text-indigo-700 font-bold bg-indigo-50 border border-indigo-100 px-4 py-2.5 rounded-xl hover:bg-indigo-100 transition shadow-sm">
+            <Download size={18} /> Unduh Jurnal
+          </button>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Edit2 size={18} className="text-indigo-600"/> Form Jurnal Baru</h3>
+            <div className="flex gap-2 mb-4">
+              <button type="button" onClick={handleDownloadTemplateJurnal} className="flex-1 flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-100 transition">
+                <Download size={14}/> Template XLSX
+              </button>
+              <label className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-100 transition">
+                <Upload size={14}/> Import XLSX
+                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportJurnal} />
+              </label>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
@@ -890,6 +1333,10 @@ const JournalSection = ({ journals, ctx, showToast }) => {
                 <select value={formData.mapel} onChange={e => setFormData({...formData, mapel: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
                   {MAPEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Tujuan Pembelajaran</label>
+                <textarea placeholder="Siswa mampu..." value={formData.tujuanPembelajaran} onChange={e => setFormData({...formData, tujuanPembelajaran: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-20 resize-none focus:ring-2 focus:ring-indigo-500"></textarea>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Materi Pokok</label>
@@ -919,13 +1366,17 @@ const JournalSection = ({ journals, ctx, showToast }) => {
             <div key={j.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex gap-4 hover:shadow-md transition group">
               <div className="w-14 h-14 bg-indigo-50 rounded-xl flex flex-col items-center justify-center shrink-0 border border-indigo-100 text-indigo-700">
                 <span className="text-lg font-black leading-none">{j.tanggal.substring(8,10)}</span>
-                <span className="text-[10px] font-bold uppercase mt-1">{new Date(j.tanggal).toLocaleString('id-ID', { month: 'short' })}</span>
+                <span className="text-[10px] font-bold uppercase mt-0.5">{new Date(j.tanggal + 'T00:00:00').toLocaleString('id-ID', { month: 'short' })}</span>
+                <span className="text-[9px] font-bold text-indigo-400">{j.tanggal.substring(0,4)}</span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
                   <h4 className="font-bold text-slate-800 text-lg truncate pr-4">{j.mapel}</h4>
                   <button onClick={() => handleDelete(j.id)} className="text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
                 </div>
+                {j.tujuanPembelajaran && (
+                  <p className="text-indigo-600 font-medium text-xs mt-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 line-clamp-2">🎯 {j.tujuanPembelajaran}</p>
+                )}
                 <p className="text-slate-600 font-medium text-sm mt-1">{j.materi}</p>
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -1328,6 +1779,21 @@ const SettingsSection = ({ settings, profile, ctx, showToast }) => {
           <div>
             <label className="block text-sm font-bold text-slate-600 mb-1">Nama Sekolah</label>
             <input type="text" value={localSettings.namaSekolah || ''} onChange={e => setLocalSettings({...localSettings, namaSekolah: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Cth: SD Negeri Nusantara" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-600 mb-1">Nama Kepala Sekolah</label>
+            <input type="text" value={localSettings.namaKepalaSekolah || ''} onChange={e => setLocalSettings({...localSettings, namaKepalaSekolah: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Beserta Gelar" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-600 mb-1">NIP Kepala Sekolah</label>
+            <input type="text" value={localSettings.nipKepalaSekolah || ''} onChange={e => setLocalSettings({...localSettings, nipKepalaSekolah: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Nomor Induk Pegawai" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-600 mb-1">Kota Penandatanganan</label>
+            <input type="text" value={localSettings.kotaTandatangan || ''} onChange={e => setLocalSettings({...localSettings, kotaTandatangan: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Cth: Sumenep" />
           </div>
           
           <div className="pt-4 border-t border-slate-100">
