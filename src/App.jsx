@@ -36,6 +36,15 @@ const TAHUN_OPTIONS = [
   '2025/2026','2026/2027','2027/2028','2028/2029','2029/2030','2030/2031'
 ];
 
+// Guru mapel khusus (PAI, PJOK, Bahasa Inggris) - beda tampilan
+const GURU_MAPEL_LIST = [
+  'Guru PAI',
+  'Guru PJOK',
+  'Guru Bahasa Inggris',
+];
+
+const isGuruMapel = (loggedInKelas) => GURU_MAPEL_LIST.includes(loggedInKelas);
+
 // ==========================================
 // UTILITIES
 // ==========================================
@@ -99,6 +108,27 @@ const loadAutoTable = async () => {
 };
 
 
+// ==========================================
+// MODAL COMPONENT (reusable)
+// ==========================================
+const Modal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-fade-in">
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10">
+          <h3 className="font-black text-slate-800 text-lg">{title}</h3>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition">
+            <X size={20}/>
+          </button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [isEntered, setIsEntered] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -131,6 +161,7 @@ export default function App() {
   });
   const [profile, setProfile] = useState({ nama: '', nip: '', foto: '' });
   const [students, setStudents] = useState([]);
+  const [allStudentsByKelas, setAllStudentsByKelas] = useState({}); // untuk guru mapel
   const [attendance, setAttendance] = useState([]);
   const [journals, setJournals] = useState([]);
   const [tools, setTools] = useState([]);
@@ -195,33 +226,46 @@ export default function App() {
     };
   }, [isEntered, dbId]);
 
+  // Fetch semua siswa dari kelas 1-6 untuk guru mapel
+  useEffect(() => {
+    if (!isEntered || !isGuruMapel(loggedInKelas)) return;
+    const unsubs = KELAS_OPTIONS.map(kelas => {
+      const kelasDbId = `db_${kelas.replace(' ', '_').toLowerCase()}`;
+      return onSnapshot(collection(db, 'users', kelasDbId, 'students'), (snap) => {
+        const siswa = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setAllStudentsByKelas(prev => ({ ...prev, [kelas]: siswa }));
+      });
+    });
+    return () => unsubs.forEach(u => u());
+  }, [isEntered, loggedInKelas]);
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoggingIn(true);
 
     try {
-      // Buat ID Database berdasarkan kelas yang dipilih (ex: db_kelas_1)
-      const targetDbId = `db_${loginKelas.replace(' ', '_').toLowerCase()}`;
+      // Buat ID Database berdasarkan kelas/mapel yang dipilih
+      const targetDbId = `db_${loginKelas.replace(/\s+/g, '_').toLowerCase()}`;
       const settingsRef = doc(db, 'users', targetDbId, 'data', 'settings');
       const docSnap = await getDoc(settingsRef);
 
       let isLoginValid = false;
-      const kelasNumber = loginKelas.split(' ')[1]; // Ambil angka kelas
-      const defaultUserPass = `guru${kelasNumber}`; // ex: guru1
+      // Default password: guru1..guru6 untuk guru kelas, gurupai/gurupjok/gurubahasainggris untuk guru mapel
+      const defaultPass = isGuruMapel(loginKelas)
+        ? `guru${loginKelas.replace('Guru ','').replace(/\s+/g,'').toLowerCase()}`
+        : `guru${loginKelas.split(' ')[1]}`;
 
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.username === loginUser && data.password === loginPass) {
+        if (data.password === loginPass) {
           isLoginValid = true;
         }
       } else {
         // Jika belum pernah disetting, gunakan password default
-        if (loginUser === defaultUserPass && loginPass === defaultUserPass) {
+        if (loginPass === defaultPass) {
           isLoginValid = true;
-          // Buat doc default agar tidak error
           await setDoc(settingsRef, {
-             username: defaultUserPass, 
-             password: defaultUserPass,
+             password: defaultPass,
              namaSekolah: settings.namaSekolah
           }, { merge: true });
         }
@@ -231,9 +275,9 @@ export default function App() {
         setLoggedInKelas(loginKelas);
         setDbId(targetDbId);
         setIsEntered(true);
-        showToast(`Berhasil masuk sebagai Guru ${loginKelas}`);
+        showToast(`Berhasil masuk sebagai ${loginKelas}`);
       } else {
-        showToast("Username atau Password salah!", "error");
+        showToast("Password salah!", "error");
       }
     } catch (error) {
       console.error(error);
@@ -298,21 +342,11 @@ export default function App() {
                   className="w-full pl-10 pr-4 py-3 bg-indigo-50 border border-indigo-100 text-indigo-800 rounded-xl font-bold outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer" 
                 >
                   {KELAS_OPTIONS.map(k => <option key={k} value={k}>Guru {k}</option>)}
+                  {GURU_MAPEL_LIST.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
             </div>
 
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User size={18} className="text-slate-400" />
-              </div>
-              <input 
-                type="text" value={loginUser} onChange={(e)=>setLoginUser(e.target.value)} required
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" 
-                placeholder="Username" 
-              />
-            </div>
-            
             <div className="relative mb-6">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Lock size={18} className="text-slate-400" />
@@ -340,14 +374,24 @@ export default function App() {
     );
 }
 
-  const mainNavItems = [
-    { id: 'dashboard', icon: Home, label: 'Dashboard' },
-    { id: 'students', icon: Users, label: 'Data Siswa' },
-    { id: 'attendance', icon: CalendarCheck, label: 'Absensi' },
-    { id: 'journal', icon: BookOpen, label: 'Jurnal Mengajar' },
-    { id: 'tools', icon: FolderOpen, label: 'Perangkat' },
-    { id: 'grades', icon: Award, label: 'Rekap Nilai' },
-  ];
+  const guruMapelMode = isGuruMapel(loggedInKelas);
+
+  const mainNavItems = guruMapelMode
+    ? [
+        { id: 'dashboard', icon: Home, label: 'Dashboard' },
+        { id: 'students', icon: Users, label: 'Data Siswa' },
+        { id: 'journal', icon: BookOpen, label: 'Jurnal Mengajar' },
+        { id: 'tools', icon: FolderOpen, label: 'Perangkat' },
+        { id: 'grades', icon: Award, label: 'Rekap Nilai' },
+      ]
+    : [
+        { id: 'dashboard', icon: Home, label: 'Dashboard' },
+        { id: 'students', icon: Users, label: 'Data Siswa' },
+        { id: 'attendance', icon: CalendarCheck, label: 'Absensi' },
+        { id: 'journal', icon: BookOpen, label: 'Jurnal Mengajar' },
+        { id: 'tools', icon: FolderOpen, label: 'Perangkat' },
+        { id: 'grades', icon: Award, label: 'Rekap Nilai' },
+      ];
 
   // Siswa difilter dan DIURUTKAN SESUAI ABJAD
   const classStudents = students
@@ -359,7 +403,10 @@ export default function App() {
   const classTools = tools.filter(t => t.tahun === activeTahun && t.semester === activeSemester);
   const classGrades = grades.filter(g => g.tahun === activeTahun && g.semester === activeSemester);
 
-  const filterCtx = { activeTahun, activeSemester, loggedInKelas, dbId };
+  const filterCtx = { activeTahun, activeSemester, loggedInKelas, dbId, guruMapelMode };
+
+  // Untuk guru mapel, mapelGuru = nama mapelnya saja (tanpa "Guru ")
+  const mapelGuru = guruMapelMode ? loggedInKelas.replace('Guru ', '') : '';
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
@@ -450,12 +497,15 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50">
-          {activeTab === 'dashboard' && <Dashboard profile={profile} students={classStudents} attendance={classAttendance} journals={classJournals} ctx={filterCtx} setActiveTab={setActiveTab} />}
-          {activeTab === 'students' && <StudentSection students={classStudents} ctx={filterCtx} showToast={showToast} />}
-          {activeTab === 'attendance' && <AttendanceSection students={classStudents} attendance={classAttendance} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
-          {activeTab === 'journal' && <JournalSection journals={classJournals} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
-          {activeTab === 'tools' && <ToolsSection tools={classTools} ctx={filterCtx} showToast={showToast} />}
-          {activeTab === 'grades' && <GradesSection students={classStudents} grades={classGrades} ctx={filterCtx} showToast={showToast} />}
+          {activeTab === 'dashboard' && <Dashboard profile={profile} students={guruMapelMode ? Object.values(allStudentsByKelas).flat().filter(s=>s.tahun===activeTahun) : classStudents} attendance={classAttendance} journals={classJournals} ctx={filterCtx} setActiveTab={setActiveTab} guruMapelMode={guruMapelMode} />}
+          {activeTab === 'students' && !guruMapelMode && <StudentSection students={classStudents} ctx={filterCtx} showToast={showToast} />}
+          {activeTab === 'students' && guruMapelMode && <StudentSectionGuruMapel allStudentsByKelas={allStudentsByKelas} ctx={filterCtx} />}
+          {activeTab === 'attendance' && !guruMapelMode && <AttendanceSection students={classStudents} attendance={classAttendance} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
+          {activeTab === 'journal' && !guruMapelMode && <JournalSection journals={classJournals} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
+          {activeTab === 'journal' && guruMapelMode && <JournalSectionGuruMapel journals={classJournals} allStudentsByKelas={allStudentsByKelas} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} mapelGuru={mapelGuru} />}
+          {activeTab === 'tools' && <ToolsSection tools={classTools} ctx={filterCtx} showToast={showToast} guruMapelMode={guruMapelMode} />}
+          {activeTab === 'grades' && !guruMapelMode && <GradesSection students={classStudents} grades={classGrades} ctx={filterCtx} showToast={showToast} />}
+          {activeTab === 'grades' && guruMapelMode && <GradesSectionGuruMapel allStudentsByKelas={allStudentsByKelas} grades={classGrades} ctx={filterCtx} showToast={showToast} mapelGuru={mapelGuru} />}
           {activeTab === 'settings' && <SettingsSection settings={settings} profile={profile} ctx={filterCtx} showToast={showToast} />}
         </main>
       </div>
@@ -466,7 +516,7 @@ export default function App() {
 // ==========================================
 // 1. DASHBOARD COMPONENT
 // ==========================================
-const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab }) => {
+const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab, guruMapelMode }) => {
   const today = getTodayDate();
   const todayAttendance = attendance.filter(a => a.tanggal === today);
   const presentToday = todayAttendance.filter(a => a.status === 'Hadir').length;
@@ -487,19 +537,22 @@ const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab 
           )}
         </div>
         <div className="text-center md:text-left flex-1 relative z-10">
-          <h2 className="text-2xl md:text-3xl font-black text-slate-800 mb-1">{profile?.nama || `Guru ${ctx.loggedInKelas}`}</h2>
+          <h2 className="text-2xl md:text-3xl font-black text-slate-800 mb-1">{profile?.nama || ctx.loggedInKelas}</h2>
           <p className="text-slate-500 font-bold mb-4">
-            NIP. {profile?.nip || '-'} <span className="mx-2 text-slate-300">|</span> Wali {ctx.loggedInKelas}
+            NIP. {profile?.nip || '-'} <span className="mx-2 text-slate-300">|</span>
+            {guruMapelMode ? ctx.loggedInKelas : `Wali ${ctx.loggedInKelas}`}
           </p>
           <div className="flex flex-wrap justify-center md:justify-start gap-3">
              <div className="bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
                <span className="block text-[10px] uppercase font-bold text-indigo-400">Total Siswa</span>
                <span className="text-lg font-black text-indigo-700">{students.length} Anak</span>
              </div>
-             <div className="bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100">
-               <span className="block text-[10px] uppercase font-bold text-emerald-400">Hadir Hari Ini</span>
-               <span className="text-lg font-black text-emerald-700">{presentToday} Anak</span>
-             </div>
+             {!guruMapelMode && (
+               <div className="bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100">
+                 <span className="block text-[10px] uppercase font-bold text-emerald-400">Hadir Hari Ini</span>
+                 <span className="text-lg font-black text-emerald-700">{presentToday} Anak</span>
+               </div>
+             )}
           </div>
         </div>
       </div>
@@ -509,10 +562,12 @@ const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2"><Zap size={18} className="text-yellow-500" /> Aksi Cepat</h3>
             <div className="space-y-3">
-              <button onClick={() => setActiveTab('attendance')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-100 rounded-xl transition font-bold text-slate-600 text-sm">
-                <div className="flex items-center gap-3"><CalendarCheck size={18} /> Isi Absensi Kelas</div>
-                <ChevronRight size={16} />
-              </button>
+              {!guruMapelMode && (
+                <button onClick={() => setActiveTab('attendance')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-100 hover:border-indigo-100 rounded-xl transition font-bold text-slate-600 text-sm">
+                  <div className="flex items-center gap-3"><CalendarCheck size={18} /> Isi Absensi Kelas</div>
+                  <ChevronRight size={16} />
+                </button>
+              )}
               <button onClick={() => setActiveTab('grades')} className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 border border-slate-100 hover:border-emerald-100 rounded-xl transition font-bold text-slate-600 text-sm">
                 <div className="flex items-center gap-3"><Award size={18} /> Input Nilai Sumatif</div>
                 <ChevronRight size={16} />
@@ -553,7 +608,7 @@ const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab 
                     <span className="text-base font-black leading-none">{j.tanggal.substring(8,10)}</span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-800 text-base truncate">{j.mapel}</h4>
+                    <h4 className="font-bold text-slate-800 text-base truncate">{guruMapelMode ? (j.kelas || j.mapel) : j.mapel}</h4>
                     <p className="text-slate-500 text-sm truncate">{j.materi}</p>
                   </div>
                 </div>
@@ -564,7 +619,7 @@ const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab 
       </div>
 
       <div className="flex flex-col md:flex-row gap-3 mt-4">
-        {!isAbsenLengkap && (
+        {!guruMapelMode && !isAbsenLengkap && (
           <div className="flex-1 bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
             <Bell size={20} className="text-amber-500 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -594,6 +649,7 @@ const Dashboard = ({ profile, students, attendance, journals, ctx, setActiveTab 
 // ==========================================
 const StudentSection = ({ students, ctx, showToast }) => {
   const [formData, setFormData] = useState({ nisn: '', nis: '', nama: '', jk: 'L' });
+  const [showModal, setShowModal] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -603,6 +659,7 @@ const StudentSection = ({ students, ctx, showToast }) => {
     await setDoc(doc(db, 'users', ctx.dbId, 'students', newId), newStudent);
     showToast("Data siswa berhasil ditambahkan");
     setFormData({ nisn: '', nis: '', nama: '', jk: 'L' });
+    setShowModal(false);
   };
 
   const handleDelete = async (id) => {
@@ -686,92 +743,90 @@ const StudentSection = ({ students, ctx, showToast }) => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Tambah Siswa Baru">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Nama Lengkap</label>
+            <input type="text" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" required />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">NIS</label>
+              <input type="text" value={formData.nis} onChange={e => setFormData({...formData, nis: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">NISN</label>
+              <input type="text" value={formData.nisn} onChange={e => setFormData({...formData, nisn: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Jenis Kelamin</label>
+            <select value={formData.jk} onChange={e => setFormData({...formData, jk: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none">
+              <option value="L">Laki-laki (L)</option>
+              <option value="P">Perempuan (P)</option>
+            </select>
+          </div>
+          <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition">Simpan Siswa</button>
+        </form>
+      </Modal>
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
         <div>
           <h2 className="text-2xl font-black text-slate-800">Data Siswa <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-lg ml-2">{ctx.loggedInKelas}</span></h2>
           <p className="text-slate-500 font-medium mt-1">Tahun {ctx.activeTahun} • Total: {students.length} Siswa</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-           <button onClick={handleDownloadTemplateSiswa} className="flex items-center justify-center gap-2 bg-slate-50 text-slate-600 px-4 py-2.5 rounded-xl font-bold transition border border-slate-200 hover:bg-slate-100 text-sm">
-              <Download size={18} /> Template XLSX
-           </button>
-           <label className="flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-xl cursor-pointer hover:bg-emerald-100 font-bold transition border border-emerald-100 text-sm">
-              <Upload size={18} /> Import Excel (.xlsx)
-              <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
-           </label>
+          <button onClick={() => setShowModal(true)} className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold transition hover:bg-indigo-700 text-sm shadow-md shadow-indigo-200">
+            <Users size={18} /> + Tambah Siswa
+          </button>
+          <button onClick={handleDownloadTemplateSiswa} className="flex items-center justify-center gap-2 bg-slate-50 text-slate-600 px-4 py-2.5 rounded-xl font-bold transition border border-slate-200 hover:bg-slate-100 text-sm">
+            <Download size={18} /> Template XLSX
+          </button>
+          <label className="flex items-center justify-center gap-2 bg-emerald-50 text-emerald-700 px-4 py-2.5 rounded-xl cursor-pointer hover:bg-emerald-100 font-bold transition border border-emerald-100 text-sm">
+            <Upload size={18} /> Import Excel (.xlsx)
+            <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
+          </label>
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-4">
-          <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-            <h3 className="font-bold text-slate-800 mb-2">Tambah Siswa Baru</h3>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">Nama Lengkap</label>
-              <input type="text" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" required />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">NIS</label>
-                <input type="text" value={formData.nis} onChange={e => setFormData({...formData, nis: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">NISN</label>
-                <input type="text" value={formData.nisn} onChange={e => setFormData({...formData, nisn: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">Jenis Kelamin</label>
-              <select value={formData.jk} onChange={e => setFormData({...formData, jk: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none">
-                <option value="L">Laki-laki (L)</option>
-                <option value="P">Perempuan (P)</option>
-              </select>
-            </div>
-            <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition">Simpan Siswa</button>
-          </form>
-        </div>
-
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
-                    <th className="p-4 font-bold w-12 text-center">No</th>
-                    <th className="p-4 font-bold">Nama Lengkap</th>
-                    <th className="p-4 font-bold">NIS / NISN</th>
-                    <th className="p-4 font-bold text-center">L/P</th>
-                    <th className="p-4 font-bold text-center">Aksi</th>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
+                <th className="p-4 font-bold w-12 text-center">No</th>
+                <th className="p-4 font-bold">Nama Lengkap</th>
+                <th className="p-4 font-bold">NIS / NISN</th>
+                <th className="p-4 font-bold text-center">L/P</th>
+                <th className="p-4 font-bold text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="p-8 text-center text-slate-400">
+                    Belum ada data siswa. Silakan tambah manual atau import dari Excel.
+                  </td>
+                </tr>
+              ) : (
+                students.map((s, idx) => (
+                  <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                    <td className="p-4 text-center font-bold text-slate-400">{idx + 1}</td>
+                    <td className="p-4 font-bold text-slate-800">{s.nama}</td>
+                    <td className="p-4 text-slate-600 text-sm">{s.nis || '-'} / {s.nisn || '-'}</td>
+                    <td className="p-4 text-center">
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold ${s.jk === 'L' ? 'bg-blue-50 text-blue-600' : 'bg-pink-50 text-pink-600'}`}>
+                        {s.jk}
+                      </span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <button onClick={() => handleDelete(s.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Trash2 size={18}/></button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {students.length === 0 ? (
-                    <tr>
-                      <td colSpan="5" className="p-8 text-center text-slate-400">
-                        Belum ada data siswa. Silakan tambah manual atau import dari Excel.
-                      </td>
-                    </tr>
-                  ) : (
-                    students.map((s, idx) => (
-                      <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                        <td className="p-4 text-center font-bold text-slate-400">{idx + 1}</td>
-                        <td className="p-4 font-bold text-slate-800">{s.nama}</td>
-                        <td className="p-4 text-slate-600 text-sm">{s.nis || '-'} / {s.nisn || '-'}</td>
-                        <td className="p-4 text-center">
-                          <span className={`px-2 py-1 rounded-md text-xs font-bold ${s.jk === 'L' ? 'bg-blue-50 text-blue-600' : 'bg-pink-50 text-pink-600'}`}>
-                            {s.jk}
-                          </span>
-                        </td>
-                        <td className="p-4 text-center">
-                          <button onClick={() => handleDelete(s.id)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg transition"><Trash2 size={18}/></button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1096,6 +1151,7 @@ const JournalSection = ({ journals, ctx, showToast, settings, profile }) => {
   const [formData, setFormData] = useState({ tanggal: getTodayDate(), mapel: MAPEL_OPTIONS[0], tujuanPembelajaran: '', materi: '', kegiatan: '', asesmen: '' });
   const [exportMonth, setExportMonth] = useState(getTodayDate().substring(5, 7));
   const [exportYear, setExportYear] = useState(getTodayDate().substring(0, 4));
+  const [showModal, setShowModal] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1105,6 +1161,7 @@ const JournalSection = ({ journals, ctx, showToast, settings, profile }) => {
     await setDoc(doc(db, 'users', ctx.dbId, 'journals', newId), newJournal);
     showToast("Jurnal berhasil disimpan");
     setFormData({ ...formData, tujuanPembelajaran: '', materi: '', kegiatan: '', asesmen: '' });
+    setShowModal(false);
   };
 
   const handleDelete = async (id) => {
@@ -1288,12 +1345,56 @@ const JournalSection = ({ journals, ctx, showToast, settings, profile }) => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Form Jurnal Baru">
+        <div className="flex gap-2 mb-4">
+          <button type="button" onClick={handleDownloadTemplateJurnal} className="flex-1 flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-100 transition">
+            <Download size={14}/> Template XLSX
+          </button>
+          <label className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-100 transition">
+            <Upload size={14}/> Import XLSX
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportJurnal} />
+          </label>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
+            <input type="date" value={formData.tanggal} onChange={e => setFormData({...formData, tanggal: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" required />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Mata Pelajaran</label>
+            <select value={formData.mapel} onChange={e => setFormData({...formData, mapel: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+              {MAPEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Tujuan Pembelajaran</label>
+            <textarea placeholder="Siswa mampu..." value={formData.tujuanPembelajaran} onChange={e => setFormData({...formData, tujuanPembelajaran: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-20 resize-none focus:ring-2 focus:ring-indigo-500"></textarea>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Materi Pokok</label>
+            <input type="text" placeholder="Topik hari ini" value={formData.materi} onChange={e => setFormData({...formData, materi: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" required />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Aktivitas Siswa</label>
+            <textarea placeholder="Siswa melakukan..." value={formData.kegiatan} onChange={e => setFormData({...formData, kegiatan: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-24 resize-none"></textarea>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Asesmen / Penilaian</label>
+            <input type="text" placeholder="Bentuk penilaian" value={formData.asesmen} onChange={e => setFormData({...formData, asesmen: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" />
+          </div>
+          <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition shadow-md">Simpan Jurnal</button>
+        </form>
+      </Modal>
+
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-black text-slate-800">Jurnal Mengajar {ctx.loggedInKelas}</h2>
           <p className="text-slate-500 font-medium mt-1">Catatan pembelajaran {ctx.activeSemester} ({ctx.activeTahun})</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
+            <Edit2 size={16}/> + Tambah Jurnal
+          </button>
           <select value={exportMonth} onChange={(e) => setExportMonth(e.target.value)} className="bg-slate-50 border border-slate-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
             {Array.from({length: 12}, (_, i) => {
               const m = (i + 1).toString().padStart(2, '0');
@@ -1310,88 +1411,42 @@ const JournalSection = ({ journals, ctx, showToast, settings, profile }) => {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-4">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><Edit2 size={18} className="text-indigo-600"/> Form Jurnal Baru</h3>
-            <div className="flex gap-2 mb-4">
-              <button type="button" onClick={handleDownloadTemplateJurnal} className="flex-1 flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-100 transition">
-                <Download size={14}/> Template XLSX
-              </button>
-              <label className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-100 transition">
-                <Upload size={14}/> Import XLSX
-                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportJurnal} />
-              </label>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
-                <input type="date" value={formData.tanggal} onChange={e => setFormData({...formData, tanggal: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Mata Pelajaran</label>
-                <select value={formData.mapel} onChange={e => setFormData({...formData, mapel: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
-                  {MAPEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Tujuan Pembelajaran</label>
-                <textarea placeholder="Siswa mampu..." value={formData.tujuanPembelajaran} onChange={e => setFormData({...formData, tujuanPembelajaran: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-20 resize-none focus:ring-2 focus:ring-indigo-500"></textarea>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Materi Pokok</label>
-                <input type="text" placeholder="Topik hari ini" value={formData.materi} onChange={e => setFormData({...formData, materi: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" required />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Aktivitas Siswa</label>
-                <textarea placeholder="Siswa melakukan..." value={formData.kegiatan} onChange={e => setFormData({...formData, kegiatan: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-24 resize-none"></textarea>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Asesmen / Penilaian</label>
-                <input type="text" placeholder="Bentuk penilaian" value={formData.asesmen} onChange={e => setFormData({...formData, asesmen: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" />
-              </div>
-              <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition shadow-md">Simpan Jurnal</button>
-            </form>
+      <div className="space-y-4">
+        {journals.length === 0 && (
+          <div className="bg-white p-8 rounded-2xl border border-slate-100 text-center text-slate-400 font-medium shadow-sm flex flex-col items-center justify-center min-h-[300px]">
+            <BookOpen size={48} className="text-slate-200 mb-3" />
+            Belum ada catatan jurnal untuk periode ini.
           </div>
-        </div>
-
-        <div className="lg:col-span-2 space-y-4">
-          {journals.length === 0 && (
-             <div className="bg-white p-8 rounded-2xl border border-slate-100 text-center text-slate-400 font-medium shadow-sm flex flex-col items-center justify-center min-h-[300px]">
-               <BookOpen size={48} className="text-slate-200 mb-3" />
-               Belum ada catatan jurnal untuk periode ini.
-             </div>
-          )}
-          {journals.map(j => (
-            <div key={j.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex gap-4 hover:shadow-md transition group">
-              <div className="w-14 h-14 bg-indigo-50 rounded-xl flex flex-col items-center justify-center shrink-0 border border-indigo-100 text-indigo-700">
-                <span className="text-lg font-black leading-none">{j.tanggal.substring(8,10)}</span>
-                <span className="text-[10px] font-bold uppercase mt-0.5">{new Date(j.tanggal + 'T00:00:00').toLocaleString('id-ID', { month: 'short' })}</span>
-                <span className="text-[9px] font-bold text-indigo-400">{j.tanggal.substring(0,4)}</span>
+        )}
+        {[...journals].sort((a,b) => b.tanggal.localeCompare(a.tanggal)).map(j => (
+          <div key={j.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex gap-4 hover:shadow-md transition group">
+            <div className="w-14 h-14 bg-indigo-50 rounded-xl flex flex-col items-center justify-center shrink-0 border border-indigo-100 text-indigo-700">
+              <span className="text-lg font-black leading-none">{j.tanggal.substring(8,10)}</span>
+              <span className="text-[10px] font-bold uppercase mt-0.5">{new Date(j.tanggal + 'T00:00:00').toLocaleString('id-ID', { month: 'short' })}</span>
+              <span className="text-[9px] font-bold text-indigo-400">{j.tanggal.substring(0,4)}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-start">
+                <h4 className="font-bold text-slate-800 text-lg truncate pr-4">{j.mapel}</h4>
+                <button onClick={() => handleDelete(j.id)} className="text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                  <h4 className="font-bold text-slate-800 text-lg truncate pr-4">{j.mapel}</h4>
-                  <button onClick={() => handleDelete(j.id)} className="text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
+              {j.tujuanPembelajaran && (
+                <p className="text-indigo-600 font-medium text-xs mt-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 line-clamp-2">🎯 {j.tujuanPembelajaran}</p>
+              )}
+              <p className="text-slate-600 font-medium text-sm mt-1">{j.materi}</p>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Aktivitas</p>
+                  <p className="text-sm text-slate-700">{j.kegiatan || '-'}</p>
                 </div>
-                {j.tujuanPembelajaran && (
-                  <p className="text-indigo-600 font-medium text-xs mt-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 line-clamp-2">🎯 {j.tujuanPembelajaran}</p>
-                )}
-                <p className="text-slate-600 font-medium text-sm mt-1">{j.materi}</p>
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Aktivitas</p>
-                    <p className="text-sm text-slate-700">{j.kegiatan || '-'}</p>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Asesmen</p>
-                    <p className="text-sm text-slate-700">{j.asesmen || '-'}</p>
-                  </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Asesmen</p>
+                  <p className="text-sm text-slate-700">{j.asesmen || '-'}</p>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1400,13 +1455,14 @@ const JournalSection = ({ journals, ctx, showToast, settings, profile }) => {
 // ==========================================
 // TOOLS COMPONENT
 // ==========================================
-const ToolsSection = ({ tools, ctx, showToast }) => {
+const ToolsSection = ({ tools, ctx, showToast, guruMapelMode }) => {
   const CATEGORY_OPTIONS = ['ATP', 'Prota', 'Promes', 'Modul Ajar', 'Kisi-kisi dan soal sumatif', 'Kokurikuler'];
   
   const [formData, setFormData] = useState({ nama: '', jenis: 'Modul Ajar', link: '' });
-  const [viewMapel, setViewMapel] = useState(MAPEL_OPTIONS[0]);
+  const [viewMapel, setViewMapel] = useState(guruMapelMode ? KELAS_OPTIONS[0] : MAPEL_OPTIONS[0]);
   const [editingId, setEditingId] = useState(null);
   const [openFolders, setOpenFolders] = useState({ 'Modul Ajar': true, 'Kisi-kisi dan soal sumatif': true });
+  const [showModal, setShowModal] = useState(false);
 
   const toggleFolder = (cat) => setOpenFolders(prev => ({...prev, [cat]: !prev[cat]}));
 
@@ -1433,11 +1489,19 @@ const ToolsSection = ({ tools, ctx, showToast }) => {
       showToast("Perangkat berhasil ditambahkan");
     }
     setFormData({ nama: '', jenis: formData.jenis, link: '' });
+    setShowModal(false);
   };
 
   const handleEdit = (t) => {
     setFormData({ nama: t.nama, jenis: t.jenis, link: t.link });
     setEditingId(t.id);
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingId(null);
+    setFormData({ nama: '', jenis: 'Modul Ajar', link: '' });
   };
 
   const handleDelete = async (id) => {
@@ -1454,100 +1518,97 @@ const ToolsSection = ({ tools, ctx, showToast }) => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+      <Modal isOpen={showModal} onClose={closeModal} title={editingId ? "Edit Dokumen" : "Tambah Dokumen"}>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg">{viewMapel}</div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Kategori Dokumen</label>
+            <select value={formData.jenis} onChange={e => setFormData({...formData, jenis: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none font-medium">
+              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Nama Spesifik</label>
+            <input type="text" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" placeholder="Cth: Bab 1, Tema 2..." required />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Tautan / Link GDrive</label>
+            <input type="url" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" placeholder="https://..." required />
+          </div>
+          <button type="submit" className={`w-full font-bold py-2.5 rounded-xl transition text-white ${editingId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+            {editingId ? "Simpan Perubahan" : "Simpan Tautan"}
+          </button>
+        </form>
+      </Modal>
+
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-black text-slate-800">Perangkat Mengajar</h2>
           <p className="text-slate-500 font-medium mt-1">Kelola tautan dokumen {ctx.activeSemester} ({ctx.activeTahun})</p>
         </div>
-        <select value={viewMapel} onChange={(e) => setViewMapel(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-800 px-4 py-2.5 rounded-xl font-bold outline-none">
-           {MAPEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          <select value={viewMapel} onChange={(e) => setViewMapel(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-800 px-4 py-2.5 rounded-xl font-bold outline-none">
+            {guruMapelMode
+              ? KELAS_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)
+              : MAPEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)
+            }
+          </select>
+          <button onClick={() => { setFormData({ nama: '', jenis: 'Modul Ajar', link: '' }); setEditingId(null); setShowModal(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
+            <FolderOpen size={16}/> + Tambah Dokumen
+          </button>
+        </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
-          <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-             <h3 className="font-bold text-slate-800 mb-2 flex flex-col gap-1">
-                <span className="flex items-center justify-between">
-                  {editingId ? "Edit Dokumen" : "Tambah Dokumen"}
-                  {editingId && <button type="button" onClick={()=>{setEditingId(null); setFormData({ nama: '', jenis: 'Modul Ajar', link: '' });}} className="text-xs text-red-500 hover:underline">Batal</button>}
-                </span>
-                <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded w-fit">{viewMapel}</span>
-             </h3>
-             <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Kategori Dokumen</label>
-                <select value={formData.jenis} onChange={e => setFormData({...formData, jenis: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none font-medium">
-                  {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-             </div>
-             <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Nama Spesifik</label>
-                <input type="text" value={formData.nama} onChange={e => setFormData({...formData, nama: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" placeholder="Cth: Bab 1, Tema 2..." required />
-             </div>
-             <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Tautan / Link GDrive</label>
-                <input type="url" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" placeholder="https://..." required />
-             </div>
-             <button type="submit" className={`w-full font-bold py-2.5 rounded-xl transition text-white ${editingId ? 'bg-amber-500 hover:bg-amber-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-               {editingId ? "Simpan Perubahan" : "Simpan Tautan"}
-             </button>
-          </form>
-        </div>
-        
-        <div className="md:col-span-2 space-y-4">
-          {filteredTools.length === 0 ? (
-             <div className="bg-white p-8 rounded-2xl border border-slate-100 text-center text-slate-400 font-medium shadow-sm">
-               Belum ada dokumen perangkat untuk mapel <b>{viewMapel}</b>.
-             </div>
-          ) : (
-            CATEGORY_OPTIONS.map(cat => {
-              const items = groupedTools[cat];
-              if(items.length === 0) return null;
-              
-              const isFolderType = cat === 'Modul Ajar' || cat === 'Kisi-kisi dan soal sumatif';
-              const isOpen = openFolders[cat];
+      <div className="space-y-4">
+        {filteredTools.length === 0 ? (
+          <div className="bg-white p-8 rounded-2xl border border-slate-100 text-center text-slate-400 font-medium shadow-sm">
+            Belum ada dokumen perangkat untuk <b>{viewMapel}</b>.
+          </div>
+        ) : (
+          CATEGORY_OPTIONS.map(cat => {
+            const items = groupedTools[cat];
+            if(items.length === 0) return null;
+            
+            const isFolderType = cat === 'Modul Ajar' || cat === 'Kisi-kisi dan soal sumatif';
+            const isOpen = openFolders[cat];
 
-              return (
-                <div key={cat} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                  {/* Folder Header */}
-                  {isFolderType && (
-                    <button onClick={() => toggleFolder(cat)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition border-b border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <Folder className="text-amber-500 fill-amber-100" size={24} />
-                        <span className="font-black text-slate-700">{cat} <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full ml-2">{items.length}</span></span>
-                      </div>
-                      <ChevronDown size={20} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                  )}
-
-                  {/* List Item */}
-                  {(!isFolderType || isOpen) && (
-                    <div className={`p-4 space-y-3 ${!isFolderType && 'pt-4'}`}>
-                      {!isFolderType && <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">{cat}</h4>}
-                      {items.map(t => (
-                        <div key={t.id} className="flex items-center gap-4 bg-white border border-slate-100 p-3 rounded-xl hover:shadow-md transition">
-                          <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
-                            <FolderOpen size={18} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-slate-800 text-sm truncate">{t.nama}</h4>
-                            <a href={t.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-colors w-max">
-                              <ExternalLink size={12} /> Buka Tautan
-                            </a>
-                          </div>
-                          <div className="flex gap-1">
-                            <button onClick={() => handleEdit(t)} className="p-2 text-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg transition"><Edit2 size={16}/></button>
-                            <button onClick={() => handleDelete(t.id)} className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition"><Trash2 size={16}/></button>
-                          </div>
-                        </div>
-                      ))}
+            return (
+              <div key={cat} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                {isFolderType && (
+                  <button onClick={() => toggleFolder(cat)} className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <Folder className="text-amber-500 fill-amber-100" size={24} />
+                      <span className="font-black text-slate-700">{cat} <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full ml-2">{items.length}</span></span>
                     </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+                    <ChevronDown size={20} className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+                {(!isFolderType || isOpen) && (
+                  <div className={`p-4 space-y-3 ${!isFolderType && 'pt-4'}`}>
+                    {!isFolderType && <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">{cat}</h4>}
+                    {items.map(t => (
+                      <div key={t.id} className="flex items-center gap-4 bg-white border border-slate-100 p-3 rounded-xl hover:shadow-md transition">
+                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shrink-0">
+                          <FolderOpen size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-slate-800 text-sm truncate">{t.nama}</h4>
+                          <a href={t.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 mt-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-colors w-max">
+                            <ExternalLink size={12} /> Buka Tautan
+                          </a>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => handleEdit(t)} className="p-2 text-amber-500 bg-amber-50 hover:bg-amber-100 rounded-lg transition"><Edit2 size={16}/></button>
+                          <button onClick={() => handleDelete(t.id)} className="p-2 text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition"><Trash2 size={16}/></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -1704,6 +1765,428 @@ const GradesSection = ({ students, grades, ctx, showToast }) => {
 };
 
 // ==========================================
+// GURU MAPEL — DATA SISWA (read-only all kelas)
+// ==========================================
+const StudentSectionGuruMapel = ({ allStudentsByKelas, ctx }) => {
+  const [viewKelas, setViewKelas] = useState(KELAS_OPTIONS[0]);
+  const siswaTampil = (allStudentsByKelas[viewKelas] || [])
+    .filter(s => s.tahun === ctx.activeTahun)
+    .sort((a,b) => a.nama.localeCompare(b.nama));
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">Data Siswa</h2>
+          <p className="text-slate-500 font-medium mt-1">Tahun {ctx.activeTahun} • {siswaTampil.length} Siswa</p>
+        </div>
+        <select value={viewKelas} onChange={e=>setViewKelas(e.target.value)} className="bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-2.5 rounded-xl font-bold outline-none">
+          {KELAS_OPTIONS.map(k=><option key={k} value={k}>{k}</option>)}
+        </select>
+      </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
+                <th className="p-4 font-bold w-12 text-center">No</th>
+                <th className="p-4 font-bold">Nama Lengkap</th>
+                <th className="p-4 font-bold">NIS / NISN</th>
+                <th className="p-4 font-bold text-center">L/P</th>
+              </tr>
+            </thead>
+            <tbody>
+              {siswaTampil.length === 0 ? (
+                <tr><td colSpan="4" className="p-8 text-center text-slate-400">Belum ada data siswa di kelas ini.</td></tr>
+              ) : siswaTampil.map((s,idx) => (
+                <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                  <td className="p-4 text-center font-bold text-slate-400">{idx+1}</td>
+                  <td className="p-4 font-bold text-slate-800">{s.nama}</td>
+                  <td className="p-4 text-slate-600 text-sm">{s.nis||'-'} / {s.nisn||'-'}</td>
+                  <td className="p-4 text-center"><span className={`px-2 py-1 rounded-md text-xs font-bold ${s.jk==='L'?'bg-blue-50 text-blue-600':'bg-pink-50 text-pink-600'}`}>{s.jk}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// GURU MAPEL — JURNAL (per kelas, bukan per mapel)
+// ==========================================
+const JournalSectionGuruMapel = ({ journals, allStudentsByKelas, ctx, showToast, settings, profile, mapelGuru }) => {
+  const [formData, setFormData] = useState({ tanggal: getTodayDate(), kelas: KELAS_OPTIONS[0], tujuanPembelajaran: '', materi: '', kegiatan: '', asesmen: '' });
+  const [exportKelas, setExportKelas] = useState(KELAS_OPTIONS[0]);
+  const [viewKelas, setViewKelas] = useState('Semua');
+  const [exportMonth, setExportMonth] = useState(getTodayDate().substring(5,7));
+  const [exportYear, setExportYear] = useState(getTodayDate().substring(0,4));
+  const [showModal, setShowModal] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.materi) return showToast("Materi wajib diisi", "error");
+    const newId = generateId();
+    await setDoc(doc(db, 'users', ctx.dbId, 'journals', newId), {
+      ...formData, mapel: mapelGuru,
+      tahun: ctx.activeTahun, semester: ctx.activeSemester,
+    });
+    showToast("Jurnal berhasil disimpan");
+    setFormData({ ...formData, tujuanPembelajaran: '', materi: '', kegiatan: '', asesmen: '' });
+    setShowModal(false);
+  };
+
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, 'users', ctx.dbId, 'journals', id));
+    showToast("Jurnal dihapus");
+  };
+
+  // Filter jurnal untuk tampilan card - normalize kelas field
+  const filteredJournals = [...journals]
+    .filter(j => {
+      if (viewKelas === 'Semua') return true;
+      const jKelas = (j.kelas || '').trim();
+      return jKelas === viewKelas;
+    })
+    .sort((a,b) => b.tanggal.localeCompare(a.tanggal));
+
+  const getLastWorkdayOfMonth = (year, month) => {
+    let d = new Date(year, month, 0);
+    while (d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()-1);
+    return d;
+  };
+
+  const handleDownloadTemplateJurnal = async () => {
+    try {
+      const XLSX = await loadXLSX();
+      const ws = XLSX.utils.aoa_to_sheet([
+        ['Tanggal', 'Kelas', 'TP', 'Materi Pokok', 'Aktivitas Siswa', 'Asesmen'],
+        ['2025-07-14', 'Kelas 1', 'Siswa mampu ...', 'Contoh materi', 'Diskusi kelompok', 'Tes lisan'],
+      ]);
+      ws['A2'] = { t:'s', v:'2025-07-14' };
+      ws['!cols'] = [{wch:14},{wch:12},{wch:40},{wch:30},{wch:35},{wch:25}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Template Jurnal');
+      XLSX.writeFile(wb, `Template_Jurnal_${mapelGuru.replace(/\s/g,'_')}.xlsx`);
+    } catch(err) { showToast("Gagal membuat template", "error"); }
+  };
+
+  const excelSerialToDate = (serial) => {
+    const d = new Date((serial-25569)*86400*1000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  };
+
+  const handleImportJurnal = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const XLSX = await loadXLSX();
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const wb = XLSX.read(evt.target.result, { type:'binary', cellDates:false });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const data = XLSX.utils.sheet_to_json(ws, { raw:true });
+          if (data.length===0) return showToast("File Excel kosong","error");
+          let count=0;
+          for (const row of data) {
+            let tanggal = row['Tanggal'];
+            if (!tanggal) continue;
+            if (typeof tanggal==='number') tanggal = excelSerialToDate(tanggal);
+            else tanggal = tanggal.toString().trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(tanggal)) continue;
+            const kelas = (row['Kelas']||'').toString().trim() || KELAS_OPTIONS[0];
+            const materi = (row['Materi Pokok']||'').toString().trim();
+            if (!materi) continue;
+            await setDoc(doc(db,'users',ctx.dbId,'journals',generateId()), {
+              tanggal, kelas, mapel: mapelGuru,
+              tujuanPembelajaran: (row['TP']||'').toString(),
+              materi, kegiatan: (row['Aktivitas Siswa']||'').toString(),
+              asesmen: (row['Asesmen']||'').toString(),
+              tahun: ctx.activeTahun, semester: ctx.activeSemester,
+            });
+            count++;
+          }
+          if (count===0) return showToast("Tidak ada data valid. Pastikan format tanggal YYYY-MM-DD","error");
+          showToast(`${count} jurnal berhasil diimport!`,"success");
+        } catch(err) { showToast("Format file tidak sesuai","error"); }
+      };
+      reader.readAsBinaryString(file);
+    } catch(err) { showToast("Gagal memuat library Excel","error"); }
+    e.target.value=null;
+  };
+
+  const handleExportJurnal = async () => {
+    const year=parseInt(exportYear); const month=parseInt(exportMonth);
+    const dataBulan = journals.filter(j => {
+      if (!j.tanggal||j.tanggal.length<7) return false;
+      return (j.kelas||'').trim()===exportKelas && parseInt(j.tanggal.substring(0,4))===year && parseInt(j.tanggal.substring(5,7))===month;
+    });
+    if (dataBulan.length===0) { showToast("Tidak ada data jurnal di bulan & kelas ini","error"); return; }
+    const bulanNama = new Date(year,month-1,1).toLocaleString('id-ID',{month:'long'});
+    const lastWorkday = getLastWorkdayOfMonth(year,month);
+    const tanggalTTD = lastWorkday.toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const kota=settings.kotaTandatangan||'___________';
+    const namaKepala=settings.namaKepalaSekolah||'___________________________';
+    const nipKepala=settings.nipKepalaSekolah||'___________________________';
+    const namaGuru=profile.nama||'___________________________';
+    const nipGuru=profile.nip||'___________________________';
+    const namaSekolah=settings.namaSekolah||'SD NEGERI NUSANTARA';
+    const sorted=[...dataBulan].sort((a,b)=>a.tanggal.localeCompare(b.tanggal));
+    try {
+      const JsPDF=await loadJsPDF(); await loadAutoTable();
+      const doc=new JsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+      const pageW=doc.internal.pageSize.getWidth();
+      doc.setFontSize(13);doc.setFont(undefined,'bold');
+      doc.text(namaSekolah,pageW/2,14,{align:'center'});
+      doc.setFontSize(11);doc.text(`JURNAL MENGAJAR ${mapelGuru.toUpperCase()}`,pageW/2,20,{align:'center'});
+      doc.setFont(undefined,'normal');doc.setFontSize(9);
+      doc.text(`${exportKelas}  |  Bulan: ${bulanNama} ${year}  |  Semester: ${ctx.activeSemester} (${ctx.activeTahun})`,pageW/2,26,{align:'center'});
+      const head=[['No','Tanggal','Kelas','Tujuan Pembelajaran','Materi Pokok','Aktivitas Siswa','Asesmen']];
+      const body=sorted.map((j,idx)=>[idx+1,j.tanggal,j.kelas||'-',j.tujuanPembelajaran||'-',j.materi,j.kegiatan||'-',j.asesmen||'-']);
+      doc.autoTable({head,body,startY:30,styles:{fontSize:8,cellPadding:2},
+        columnStyles:{0:{cellWidth:8,halign:'center'},1:{cellWidth:22},2:{cellWidth:18},3:{cellWidth:50},4:{cellWidth:38},5:{cellWidth:55},6:{cellWidth:34}},
+        headStyles:{fillColor:[79,70,229],textColor:255},alternateRowStyles:{fillColor:[245,245,255]},margin:{left:10,right:10}});
+      const finalY=doc.lastAutoTable.finalY+10;
+      const needNew=finalY+38>doc.internal.pageSize.getHeight();
+      if(needNew)doc.addPage();
+      const sigY=needNew?20:finalY; const left=14; const rightX=pageW/2+10;
+      doc.setFontSize(10);
+      doc.text('Mengetahui,',left+20,sigY,{align:'center'});doc.text('Kepala Sekolah',left+20,sigY+5,{align:'center'});
+      doc.text(`${kota}, ${tanggalTTD}`,rightX+20,sigY,{align:'center'});doc.text(`Guru ${mapelGuru}`,rightX+20,sigY+5,{align:'center'});
+      doc.text(namaKepala,left+20,sigY+28,{align:'center'});doc.setDrawColor(0);
+      doc.line(left,sigY+29,left+40,sigY+29);doc.text(`NIP. ${nipKepala}`,left+20,sigY+33,{align:'center'});
+      doc.text(namaGuru,rightX+20,sigY+28,{align:'center'});doc.line(rightX,sigY+29,rightX+40,sigY+29);doc.text(`NIP. ${nipGuru}`,rightX+20,sigY+33,{align:'center'});
+      doc.save(`Jurnal_${mapelGuru.replace(/\s/g,'_')}_${exportKelas.replace(' ','_')}_${bulanNama}_${year}.pdf`);
+      showToast(`PDF Jurnal berhasil diunduh!`,"success");
+    } catch(err){console.error(err);showToast("Gagal membuat PDF: "+err.message,"error");}
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={`Form Jurnal Baru — ${mapelGuru}`}>
+        <div className="flex gap-2 mb-4">
+          <button type="button" onClick={handleDownloadTemplateJurnal} className="flex-1 flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-100 transition">
+            <Download size={14}/> Template XLSX
+          </button>
+          <label className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-100 transition">
+            <Upload size={14}/> Import XLSX
+            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImportJurnal}/>
+          </label>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Tanggal</label>
+            <input type="date" value={formData.tanggal} onChange={e=>setFormData({...formData,tanggal:e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500" required/>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Kelas</label>
+            <select value={formData.kelas} onChange={e=>setFormData({...formData,kelas:e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-medium">
+              {KELAS_OPTIONS.map(k=><option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Tujuan Pembelajaran</label>
+            <textarea placeholder="Siswa mampu..." value={formData.tujuanPembelajaran} onChange={e=>setFormData({...formData,tujuanPembelajaran:e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-20 resize-none focus:ring-2 focus:ring-indigo-500"></textarea>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Materi Pokok</label>
+            <input type="text" placeholder="Topik hari ini" value={formData.materi} onChange={e=>setFormData({...formData,materi:e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none" required/>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Aktivitas Siswa</label>
+            <textarea placeholder="Siswa melakukan..." value={formData.kegiatan} onChange={e=>setFormData({...formData,kegiatan:e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none h-20 resize-none"></textarea>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Asesmen / Penilaian</label>
+            <input type="text" placeholder="Bentuk penilaian" value={formData.asesmen} onChange={e=>setFormData({...formData,asesmen:e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none"/>
+          </div>
+          <button type="submit" className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition shadow-md">Simpan Jurnal</button>
+        </form>
+      </Modal>
+
+      {/* Header */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">Jurnal Mengajar {mapelGuru}</h2>
+          <p className="text-slate-500 font-medium mt-1">Catatan pembelajaran {ctx.activeSemester} ({ctx.activeTahun})</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
+            <Edit2 size={16}/> + Tambah Jurnal
+          </button>
+          <select value={exportKelas} onChange={e=>setExportKelas(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
+            {KELAS_OPTIONS.map(k=><option key={k} value={k}>{k}</option>)}
+          </select>
+          <select value={exportMonth} onChange={e=>setExportMonth(e.target.value)} className="bg-slate-50 border border-slate-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
+            {Array.from({length:12},(_,i)=>{const m=(i+1).toString().padStart(2,'0');return <option key={m} value={m}>{new Date(2000,i,1).toLocaleString('id-ID',{month:'long'})}</option>})}
+          </select>
+          <select value={exportYear} onChange={e=>setExportYear(e.target.value)} className="bg-slate-50 border border-slate-200 text-indigo-800 px-3 py-2 rounded-xl font-bold text-sm outline-none">
+            {[2025,2026,2027,2028,2029,2030,2031].map(y=><option key={y} value={y}>{y}</option>)}
+          </select>
+          <button onClick={handleExportJurnal} className="flex items-center gap-2 text-sm text-indigo-700 font-bold bg-indigo-50 border border-indigo-100 px-4 py-2.5 rounded-xl hover:bg-indigo-100 transition shadow-sm">
+            <Download size={18}/> Unduh Jurnal
+          </button>
+        </div>
+      </div>
+
+      {/* Filter kelas untuk tampilan card */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {['Semua', ...KELAS_OPTIONS].map(k => {
+          const count = k === 'Semua'
+            ? journals.length
+            : journals.filter(j => (j.kelas || '').trim() === k).length;
+          return (
+            <button key={k} onClick={() => setViewKelas(k)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${viewKelas === k ? 'bg-indigo-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              {k} <span className={`ml-1 ${viewKelas === k ? 'text-indigo-200' : 'text-slate-400'}`}>({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Card list */}
+      <div className="space-y-4">
+        {filteredJournals.length === 0 && (
+          <div className="bg-white p-8 rounded-2xl border border-slate-100 text-center text-slate-400 font-medium shadow-sm flex flex-col items-center justify-center min-h-[200px]">
+            <BookOpen size={48} className="text-slate-200 mb-3"/>Belum ada catatan jurnal untuk periode ini.
+          </div>
+        )}
+        {filteredJournals.map(j=>(
+          <div key={j.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex gap-4 hover:shadow-md transition group">
+            <div className="w-14 h-14 bg-indigo-50 rounded-xl flex flex-col items-center justify-center shrink-0 border border-indigo-100 text-indigo-700">
+              <span className="text-lg font-black leading-none">{j.tanggal.substring(8,10)}</span>
+              <span className="text-[10px] font-bold uppercase mt-0.5">{new Date(j.tanggal+'T00:00:00').toLocaleString('id-ID',{month:'short'})}</span>
+              <span className="text-[9px] font-bold text-indigo-400">{j.tanggal.substring(0,4)}</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-base">{j.kelas || '-'}</h4>
+                  <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded">{mapelGuru}</span>
+                </div>
+                <button onClick={()=>handleDelete(j.id)} className="text-slate-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
+              </div>
+              {j.tujuanPembelajaran&&<p className="text-indigo-600 font-medium text-xs mt-1 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 line-clamp-2">🎯 {j.tujuanPembelajaran}</p>}
+              <p className="text-slate-600 font-medium text-sm mt-1">{j.materi}</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-100"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Aktivitas</p><p className="text-xs text-slate-700">{j.kegiatan||'-'}</p></div>
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-100"><p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Asesmen</p><p className="text-xs text-slate-700">{j.asesmen||'-'}</p></div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// GURU MAPEL — REKAP NILAI (per kelas 1-6)
+// ==========================================
+const GradesSectionGuruMapel = ({ allStudentsByKelas, grades, ctx, showToast, mapelGuru }) => {
+  const [kelasAktif, setKelasAktif] = useState(KELAS_OPTIONS[0]);
+
+  const students = (allStudentsByKelas[kelasAktif]||[])
+    .filter(s=>s.tahun===ctx.activeTahun)
+    .sort((a,b)=>a.nama.localeCompare(b.nama));
+
+  const handleGradeChange = async (siswaId, field, value) => {
+    let existing = grades.find(g=>g.siswaId===siswaId && g.kelas===kelasAktif);
+    if (existing) {
+      await setDoc(doc(db,'users',ctx.dbId,'grades',existing.id),{[field]:value},{merge:true});
+    } else {
+      await setDoc(doc(db,'users',ctx.dbId,'grades',generateId()),{
+        siswaId, mapel: mapelGuru, kelas: kelasAktif,
+        tahun: ctx.activeTahun, semester: ctx.activeSemester, [field]:value
+      });
+    }
+  };
+
+  const handleExportGrades = () => {
+    if (students.length===0) return showToast("Tidak ada data siswa","error");
+    const exportData = students.map((s,idx)=>{
+      const g=grades.find(gd=>gd.siswaId===s.id&&gd.kelas===kelasAktif)||{};
+      let sum=0,cnt=0;
+      [1,2,3,4,5,6,7,8].forEach(n=>{if(g[`s${n}`]){sum+=Number(g[`s${n}`]);cnt++;}});
+      const avg=cnt>0?sum/cnt:0; const akhir=Number(g.akhir||0);
+      let final=0;
+      if(avg>0&&akhir>0)final=Math.round((avg+akhir)/2);else if(avg>0)final=Math.round(avg);else if(akhir>0)final=akhir;
+      return {"No":idx+1,"Nama":s.nama,"S1":g.s1||'',"S2":g.s2||'',"S3":g.s3||'',"S4":g.s4||'',"S5":g.s5||'',"S6":g.s6||'',"S7":g.s7||'',"S8":g.s8||'',"Asesmen Akhir":g.akhir||'',"Nilai Akhir":final||''};
+    });
+    exportToExcel(exportData,`Rekap_Nilai_${mapelGuru.replace(/\s/g,'_')}_${kelasAktif.replace(' ','_')}`,showToast);
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">Rekap Nilai {mapelGuru}</h2>
+          <p className="text-slate-500 font-medium mt-1">Penilaian {ctx.activeSemester} ({ctx.activeTahun})</p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          <select value={kelasAktif} onChange={e=>setKelasAktif(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-800 w-full md:w-auto px-4 py-2.5 rounded-xl font-bold outline-none">
+            {KELAS_OPTIONS.map(k=><option key={k} value={k}>{k}</option>)}
+          </select>
+          <button onClick={handleExportGrades} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition shadow-md shadow-indigo-200">
+            <Download size={18}/> Export .xlsx
+          </button>
+        </div>
+      </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left whitespace-nowrap">
+            <thead>
+              <tr className="bg-slate-800 text-slate-100 text-sm">
+                <th rowSpan="2" className="p-4 font-bold border-r border-slate-700 w-12 text-center">No</th>
+                <th rowSpan="2" className="p-4 font-bold border-r border-slate-700 min-w-[200px]">Nama Lengkap</th>
+                <th colSpan="8" className="p-4 font-bold border-r border-slate-700 text-center bg-slate-700">Nilai Sumatif Lingkup Materi</th>
+                <th rowSpan="2" className="p-4 font-bold border-r border-slate-700 text-center w-28 bg-indigo-900 leading-tight">Asesmen<br/>Akhir Sem.</th>
+                <th rowSpan="2" className="p-4 font-bold text-center w-28 bg-emerald-900 leading-tight">Nilai Akhir</th>
+              </tr>
+              <tr className="bg-slate-50 text-slate-500 text-xs text-center border-b border-slate-200">
+                {[1,2,3,4,5,6,7,8].map(n=><th key={n} className="p-2 font-bold border-r border-slate-200 w-16">S{n}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {students.map((s,idx)=>{
+                const g=grades.find(gd=>gd.siswaId===s.id&&gd.kelas===kelasAktif)||{};
+                let sum=0,cnt=0;
+                [1,2,3,4,5,6,7,8].forEach(n=>{if(g[`s${n}`]){sum+=Number(g[`s${n}`]);cnt++;}});
+                const avg=cnt>0?sum/cnt:0; const akhir=Number(g.akhir||0);
+                let final=0;
+                if(avg>0&&akhir>0)final=Math.round((avg+akhir)/2);else if(avg>0)final=Math.round(avg);else if(akhir>0)final=akhir;
+                const isRendah=final>0&&final<70;
+                return (
+                  <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                    <td className="p-3 text-center font-bold text-slate-400 border-r border-slate-100">{idx+1}</td>
+                    <td className="p-3 font-bold text-slate-800 border-r border-slate-100 truncate max-w-[200px]">{s.nama}</td>
+                    {[1,2,3,4,5,6,7,8].map(n=>(
+                      <td key={n} className="p-1 border-r border-slate-100">
+                        <input type="number" min="0" max="100" value={g[`s${n}`]||''} onChange={e=>handleGradeChange(s.id,`s${n}`,e.target.value)} className="w-12 p-2 text-center bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"/>
+                      </td>
+                    ))}
+                    <td className="px-2 py-2 bg-indigo-50/20">
+                      <input type="number" min="0" max="100" value={g.akhir||''} onChange={e=>handleGradeChange(s.id,'akhir',e.target.value)} className="w-16 mx-auto block p-2 text-center bg-white border border-indigo-200 rounded-lg text-sm font-black text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all"/>
+                    </td>
+                    <td className="px-4 py-3 text-center bg-emerald-50/20 font-black">
+                      <span className={`px-4 py-1.5 rounded-lg border block w-14 mx-auto ${isRendah?'bg-rose-100 text-rose-700 border-rose-200':'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{final||'-'}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {students.length===0&&<tr><td colSpan="13" className="px-4 py-12 text-center text-slate-400 font-medium">Belum ada data siswa di kelas ini.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // 5. SETTINGS COMPONENT
 // ==========================================
 const SettingsSection = ({ settings, profile, ctx, showToast }) => {
@@ -1711,8 +2194,8 @@ const SettingsSection = ({ settings, profile, ctx, showToast }) => {
   const [localProfile, setLocalProfile] = useState(profile);
 
   const handleSave = async () => {
-    if(!localSettings.username || !localSettings.password) {
-      return showToast("Username dan Password tidak boleh kosong", "error");
+    if(!localSettings.password) {
+      return showToast("Password tidak boleh kosong", "error");
     }
 
     await setDoc(doc(db, 'users', ctx.dbId, 'data', 'settings'), localSettings);
@@ -1798,17 +2281,11 @@ const SettingsSection = ({ settings, profile, ctx, showToast }) => {
           
           <div className="pt-4 border-t border-slate-100">
             <h4 className="font-bold text-slate-700 mb-3 text-sm flex items-center gap-2"><Lock size={16}/> Akses Login {ctx.loggedInKelas}</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Username Baru</label>
-                <input type="text" value={localSettings.username || ''} onChange={e => setLocalSettings({...localSettings, username: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Password Baru</label>
-                <input type="text" value={localSettings.password || ''} onChange={e => setLocalSettings({...localSettings, password: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Password Baru</label>
+              <input type="text" value={localSettings.password || ''} onChange={e => setLocalSettings({...localSettings, password: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
-            <p className="text-[10px] text-amber-600 mt-2 font-bold bg-amber-50 p-2 rounded-lg border border-amber-100">Simpan perubahan dan gunakan username/password ini untuk login kelas ini berikutnya.</p>
+            <p className="text-[10px] text-amber-600 mt-2 font-bold bg-amber-50 p-2 rounded-lg border border-amber-100">Simpan perubahan dan gunakan password ini untuk login kelas ini berikutnya.</p>
           </div>
         </div>
 
