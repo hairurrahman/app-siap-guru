@@ -2120,7 +2120,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className="flex flex-col h-screen text-slate-800 font-sans overflow-hidden" style={{fontFamily:"'Inter',system-ui,sans-serif", background:'#f0ebfa'}}>
+    <div className="flex flex-col h-dvh text-slate-800 font-sans" style={{fontFamily:"'Inter',system-ui,sans-serif", background:'#f0ebfa'}}>
       {/* Toast Notifications */}
       <div className="fixed top-4 right-4 z-[9999] space-y-2 pointer-events-none">
         {toasts.map(t => (
@@ -2132,7 +2132,7 @@ export default function App() {
       </div>
 
       {/* Header Atas — Purple Gradient */}
-      <header className="shrink-0 z-20 px-4 pt-3 pb-4" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 50%,#4338ca 100%)', boxShadow:'0 4px 20px rgba(109,40,217,0.25)'}}>
+      <header className="shrink-0 sticky top-0 z-20 px-4 pt-3 pb-4" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 50%,#4338ca 100%)', boxShadow:'0 4px 20px rgba(109,40,217,0.25)'}}>
         {/* Baris atas: hamburger + logo + jam */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -2266,8 +2266,8 @@ export default function App() {
       </div>
 
       {/* ── BOTTOM NAVIGATION — Mobile Only ── */}
-      <nav className="md:hidden shrink-0 bg-white border-t border-purple-100 px-1 relative z-20"
-        style={{boxShadow:'0 -4px 20px rgba(109,40,217,0.10)'}}>
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-purple-100 px-1 z-30"
+        style={{boxShadow:'0 -4px 20px rgba(109,40,217,0.10)', paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         <div className="flex items-center justify-around py-1">
           {/* Beranda */}
           <button onClick={() => handleNavClick('dashboard')}
@@ -2934,7 +2934,7 @@ const Dashboard = ({ profile, students, attendance, journals, grades, ctx, setAc
 
           {/* Card Jadwal — sub-card semi-transparent */}
           <div className="rounded-2xl p-4 mb-4"
-            style={{background:'rgba(255,255,255,0.12)',backdropFilter:'blur(8px)',border:'1px solid rgba(255,255,255,0.2)'}}>
+            style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)'}}>
             <p className="text-purple-200 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
               ≡ JADWAL MENGAJAR ANDA
             </p>
