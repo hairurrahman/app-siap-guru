@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 
 // ==========================================
 // KONFIGURASI FIREBASE
@@ -1048,6 +1048,7 @@ function getDaysInMonth(yearMonth) {
 // ─────────────────────────────────────────────────────────────
 const AkademikView = ({ ctx, settings, profile, showToast }) => {
   const [activeMenu, setActiveMenu] = React.useState('kalender');
+  const [showRentangModal, setShowRentangModal] = React.useState(false);
 
   // ── State Kalender ──
   const [awal, setAwal]   = React.useState('');
@@ -1339,13 +1340,10 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
     const months = (awal && akhir) ? getMonthsInRange(awal, akhir) : [];
     return (
       <div className="space-y-5">
-        {/* Setting rentang */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-          <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 text-sm">📅</span>
-            Rentang Semester
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        {/* Modal Rentang Semester */}
+        <Modal isOpen={showRentangModal} onClose={() => setShowRentangModal(false)} title="⚙ Atur Rentang Semester">
+          <div className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1">Tanggal Mulai Semester</label>
               <input type="date" value={awal} onChange={e => { setAwal(e.target.value); saveKalender(null, null, e.target.value, null); }}
@@ -1356,43 +1354,16 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
               <input type="date" value={akhir} onChange={e => { setAkhir(e.target.value); saveKalender(null, null, null, e.target.value); }}
                 className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
+            {awal && akhir && (
+              <p className="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2">
+                {awal} s.d. {akhir}
+              </p>
+            )}
+            <button onClick={() => setShowRentangModal(false)} className="w-full bg-purple-700 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-purple-800 transition">
+              Simpan
+            </button>
           </div>
-        </div>
-
-        {/* Legenda */}
-        <div className="flex flex-wrap gap-3 text-xs font-semibold">
-          {[
-            { warna:'bg-emerald-500', label:'Hari Efektif' },
-            { warna:'bg-red-500',     label:'Hari Merah / Libur' },
-            { warna:'bg-amber-400',   label:'Efektif Fakultatif' },
-            { warna:'bg-blue-300',    label:'Hari Minggu' },
-            { warna:'bg-slate-200',   label:'Luar Rentang' },
-          ].map(l => (
-            <div key={l.label} className="flex items-center gap-1.5">
-              <span className={`w-3 h-3 rounded-sm ${l.warna}`}></span>
-              {l.label}
-            </div>
-          ))}
-        </div>
-
-        {/* Rekap */}
-        {rekapKalender && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {[
-              { label:'Total Hari',    val: rekapKalender.total,      bg:'bg-slate-50 border-slate-200',      txt:'text-slate-700' },
-              { label:'Hari Efektif',  val: rekapKalender.efektif,    bg:'bg-emerald-50 border-emerald-200',  txt:'text-emerald-700' },
-              { label:'Hari Merah',    val: rekapKalender.merah,      bg:'bg-red-50 border-red-200',          txt:'text-red-700' },
-              { label:'Hari Minggu',   val: rekapKalender.minggu,     bg:'bg-blue-50 border-blue-200',        txt:'text-blue-700' },
-              { label:'Fakultatif',    val: rekapKalender.fakultatif, bg:'bg-amber-50 border-amber-200',      txt:'text-amber-700' },
-            ].map(r => (
-              <div key={r.label} className={`rounded-xl border p-2 text-center ${r.bg}`}>
-                <p className="text-[10px] font-bold text-slate-500 mb-0.5">{r.label}</p>
-                <p className={`text-xl font-black ${r.txt}`}>{r.val}</p>
-                <p className="text-[10px] text-slate-400">hari</p>
-              </div>
-            ))}
-          </div>
-        )}
+        </Modal>
 
         {/* Grid Kalender */}
         {months.length > 0 && (
@@ -1447,6 +1418,35 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Rekap horizontal + Legenda warna — di bawah kalender */}
+        {rekapKalender && months.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Legend warna */}
+            <div className="border-t border-slate-100 px-4 py-2 flex flex-wrap gap-x-4 gap-y-1.5 bg-slate-50">
+              {[
+                { dot:'bg-emerald-100 border border-emerald-300', txt:'Hari Efektif' },
+                { dot:'bg-red-500',    txt:'Hari Merah / Libur' },
+                { dot:'bg-amber-400',  txt:'Efektif Fakultatif' },
+                { dot:'bg-blue-100 border border-blue-300',  txt:'Hari Minggu' },
+                { dot:'bg-slate-100 border border-slate-300', txt:'Luar Rentang' },
+              ].map(l => (
+                <div key={l.txt} className="flex items-center gap-1.5">
+                  <span className={`w-3 h-3 rounded-sm shrink-0 ${l.dot}`}></span>
+                  <span className="text-[10px] text-slate-600 font-medium">{l.txt}</span>
+                </div>
+              ))}
+            </div>
+            {/* Rekap teks kecil */}
+            <div className="border-t border-slate-100 px-4 py-2 bg-white flex flex-wrap gap-x-5 gap-y-1">
+              <span className="text-[10px] text-slate-500">Hari Efektif {ctx.activeSemester} {ctx.activeTahun} = <b className="text-emerald-700">{rekapKalender.efektif} hari</b></span>
+              <span className="text-[10px] text-slate-500">Hari Merah = <b className="text-red-600">{rekapKalender.merah} hari</b></span>
+              <span className="text-[10px] text-slate-500">Hari Minggu = <b className="text-blue-600">{rekapKalender.minggu} hari</b></span>
+              <span className="text-[10px] text-slate-500">Efektif Fakultatif = <b className="text-amber-600">{rekapKalender.fakultatif} hari</b></span>
+              <span className="text-[10px] text-slate-500">Total = <b className="text-slate-700">{rekapKalender.total} hari</b></span>
+            </div>
           </div>
         )}
 
@@ -1550,11 +1550,14 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
         </div>
 
         <div className="p-4 space-y-3">
-          {/* Info JP */}
-          <div className="flex justify-end">
+          <div className="flex justify-between items-center">
             <div className="text-xs text-slate-400 font-medium">
               {(jadwal[activeHari]||[]).length} sesi · {(jadwal[activeHari]||[]).reduce((a,s) => a + (parseInt(s.jp)||0), 0)} JP
             </div>
+            <button onClick={openAddSesi}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-all ${HARI_COLORS[activeHari].bg} hover:opacity-90 shadow-sm`}>
+              + Tambah Sesi {activeHari}
+            </button>
           </div>
 
           {/* Tabel Sesi — bersih, tanpa inline edit */}
@@ -1605,10 +1608,6 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
             </div>
           )}
 
-          <button onClick={openAddSesi}
-            className={`w-full py-2.5 border-2 border-dashed rounded-xl text-sm font-bold transition-all ${HARI_COLORS[activeHari].border} ${HARI_COLORS[activeHari].text} hover:opacity-80`}>
-            + Tambah Sesi {activeHari}
-          </button>
         </div>
       </div>
 
@@ -1663,8 +1662,48 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
           ⬇ PDF
         </button>
       </div>
+    </div>
+  );
 
-      {/* Modal Tambah/Edit Sesi */}
+  // ─────────────────────────────────────────────────────────────
+  // MAIN RENDER
+  // ─────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-4 max-w-6xl mx-auto animate-fade-in">
+      {/* Header */}
+      <div className="rounded-2xl p-3 md:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
+          <div>
+            <h2 className="text-base font-black text-white">🗓️ Kalender & Jadwal Akademik</h2>
+            <p className="text-purple-200 text-xs mt-0.5">{ctx.activeSemester} · {ctx.activeTahun} · {ctx.loggedInKelas}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {activeMenu === 'kalender' && (
+              <button onClick={() => setShowRentangModal(true)}
+                className="flex items-center gap-1 bg-white/20 border border-white/30 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs hover:bg-white/30 transition">
+                ⚙ Rentang
+              </button>
+            )}
+            <div className="flex gap-1 bg-white/20 p-1 rounded-xl">
+              {[{id:'kalender',label:'📅 Kalender'},{id:'jadwal',label:'📚 Jadwal'}].map(tab => (
+                <button key={tab.id} onClick={() => setActiveMenu(tab.id)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeMenu===tab.id ? 'bg-white text-purple-800 shadow-sm' : 'text-white/70 hover:text-white'
+                  }`}>{tab.label}</button>
+              ))}
+            </div>
+          </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12 text-slate-400 font-medium">Memuat data...</div>
+      ) : (
+        <>
+          {activeMenu === 'kalender' && renderKalender()}
+          {activeMenu === 'jadwal'   && renderJadwal()}
+        </>
+      )}
+
+      {/* Modal Tambah/Edit Sesi — di luar renderJadwal agar tidak re-mount */}
       {sesiModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSesiModal(false)}></div>
@@ -1678,7 +1717,6 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
             </div>
 
             <div className="space-y-4">
-              {/* Jam */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Jam Mulai</label>
@@ -1693,8 +1731,6 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
                     className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-400" />
                 </div>
               </div>
-
-              {/* Mata Pelajaran */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Mata Pelajaran</label>
                 <select value={sesiForm.mapel}
@@ -1704,8 +1740,6 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
                   {MAPEL_OPTIONS_AK.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
-
-              {/* JP & Guru */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Jumlah JP</label>
@@ -1738,40 +1772,6 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
       )}
     </div>
   );
-
-  // ─────────────────────────────────────────────────────────────
-  // MAIN RENDER
-  // ─────────────────────────────────────────────────────────────
-  return (
-    <div className="space-y-4 max-w-6xl mx-auto animate-fade-in">
-      {/* Header */}
-      <div className="rounded-2xl p-3 md:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
-          <div>
-            <h2 className="text-base font-black text-white">🗓️ Kalender & Jadwal Akademik</h2>
-            <p className="text-purple-200 text-xs mt-0.5">{ctx.activeSemester} · {ctx.activeTahun} · {ctx.loggedInKelas}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-white/20 p-1 rounded-xl">
-              {[{id:'kalender',label:'📅 Kalender'},{id:'jadwal',label:'📚 Jadwal'}].map(tab => (
-                <button key={tab.id} onClick={() => setActiveMenu(tab.id)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    activeMenu===tab.id ? 'bg-white text-purple-800 shadow-sm' : 'text-white/70 hover:text-white'
-                  }`}>{tab.label}</button>
-              ))}
-            </div>
-          </div>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-12 text-slate-400 font-medium">Memuat data...</div>
-      ) : (
-        <>
-          {activeMenu === 'kalender' && renderKalender()}
-          {activeMenu === 'jadwal'   && renderJadwal()}
-        </>
-      )}
-    </div>
-  );
 };
 
 // ==========================================
@@ -1789,7 +1789,7 @@ const LiveClock = () => {
 };
 
 export default function App() {
-  const [isEntered, setIsEntered] = useState(false);
+  const [isEntered, setIsEntered] = useState(() => localStorage.getItem('sg_session_loggedInKelas') ? true : false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1802,8 +1802,8 @@ export default function App() {
   const [showPass, setShowPass] = useState(false);
 
   // Sesi Aktif (Setelah Login)
-  const [loggedInKelas, setLoggedInKelas] = useState('');
-  const [dbId, setDbId] = useState(''); // Contoh: 'db_kelas_1'
+  const [loggedInKelas, setLoggedInKelas] = useState(() => localStorage.getItem('sg_session_loggedInKelas') || '');
+  const [dbId, setDbId] = useState(() => localStorage.getItem('sg_session_dbId') || ''); // Contoh: 'db_kelas_1'
 
   // Global Context Dropdowns (Kelas dihilangkan dari dropdown karena sudah fix per guru)
   const [activeTahun, setActiveTahun] = useState('2025/2026');
@@ -1828,6 +1828,7 @@ export default function App() {
   const [tools, setTools] = useState([]);
   const [grades, setGrades] = useState([]);
   const [jadwalData, setJadwalData] = useState({});
+  const [kalenderData, setKalenderData] = useState({ hariMerah:{}, hariFakultatif:{}, awal:'', akhir:'' });
 
   const showToast = useCallback((message, type = 'success') => {
     const id = generateId();
@@ -1901,6 +1902,23 @@ export default function App() {
       }
     );
 
+    // === SUBSCRIPTION KALENDER AKADEMIK ===
+    const unsubKalender = onSnapshot(
+      doc(db, 'users', dbId, 'akademik', semKey || 'default'),
+      (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setKalenderData({
+            hariMerah: d.hariMerah || {},
+            hariFakultatif: d.hariFakultatif || {},
+            awal: d.awal || '',
+            akhir: d.akhir || '',
+          });
+        }
+      },
+      () => {}
+    );
+
     return () => {
       unsubSettings();
       unsubTahunSemester();
@@ -1911,6 +1929,7 @@ export default function App() {
       unsubTools();
       unsubGrades();
       unsubJadwal();
+      unsubKalender();
     };
   }, [isEntered, dbId, activeTahun, activeSemester]);
 
@@ -1968,6 +1987,8 @@ export default function App() {
         setLoggedInKelas(loginKelas);
         setDbId(targetDbId);
         setIsEntered(true);
+        localStorage.setItem('sg_session_loggedInKelas', loginKelas);
+        localStorage.setItem('sg_session_dbId', targetDbId);
         showToast(`Berhasil masuk sebagai ${loginKelas}`);
       } else {
         showToast("Password salah!", "error");
@@ -1986,6 +2007,8 @@ export default function App() {
     setLoginPass('');
     setLoggedInKelas('');
     setDbId('');
+    localStorage.removeItem('sg_session_loggedInKelas');
+    localStorage.removeItem('sg_session_dbId');
     
     // Reset States supaya data tidak bocor ke login berikutnya
     setProfile({ nama: '', nip: '', foto: '' });
@@ -2101,6 +2124,7 @@ export default function App() {
         { id: 'grades',     icon: Award,         label: 'Rekap Nilai' },
         { id: 'statistik',  icon: TrendingUp,    label: 'Statistik' },
         { id: 'tools',      icon: FolderOpen,    label: 'Perangkat' },
+        { id: 'bukuinduk',  icon: FileText,      label: 'Buku Induk' },
       ];
 
   // Siswa difilter dan DIURUTKAN SESUAI ABJAD
@@ -2233,16 +2257,17 @@ export default function App() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6" style={{background:'#f0ebfa'}}>
-          {activeTab === 'dashboard' && <Dashboard profile={profile} students={guruMapelMode ? Object.values(allStudentsByKelas).flat().filter(s=>s.tahun===activeTahun) : classStudents} attendance={classAttendance} journals={classJournals} grades={classGrades} ctx={filterCtx} setActiveTab={setActiveTab} guruMapelMode={guruMapelMode} jadwalData={jadwalData} />}
+          {activeTab === 'dashboard' && <Dashboard profile={profile} students={guruMapelMode ? Object.values(allStudentsByKelas).flat().filter(s=>s.tahun===activeTahun) : classStudents} attendance={classAttendance} journals={classJournals} grades={classGrades} ctx={filterCtx} setActiveTab={setActiveTab} guruMapelMode={guruMapelMode} jadwalData={jadwalData} kalenderData={kalenderData} />}
           {activeTab === 'students' && !guruMapelMode && <StudentSection students={classStudents} ctx={filterCtx} showToast={showToast} />}
           {activeTab === 'students' && guruMapelMode && <StudentSectionGuruMapel allStudentsByKelas={allStudentsByKelas} ctx={filterCtx} />}
-          {activeTab === 'attendance' && !guruMapelMode && <AttendanceSection students={classStudents} attendance={classAttendance} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
-          {activeTab === 'attendance' && guruMapelMode && <AttendanceSectionGuruMapel allStudentsByKelas={allStudentsByKelas} allAttendanceByKelas={allAttendanceByKelas} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} mapelGuru={mapelGuru} />}
+          {activeTab === 'attendance' && !guruMapelMode && <AttendanceSection students={classStudents} attendance={classAttendance} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} kalenderData={kalenderData} />}
+          {activeTab === 'attendance' && guruMapelMode && <AttendanceSectionGuruMapel allStudentsByKelas={allStudentsByKelas} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} mapelGuru={mapelGuru} kalenderData={kalenderData}/>}
           {activeTab === 'journal' && !guruMapelMode && <JournalSection journals={classJournals} attendance={classAttendance} students={classStudents} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} />}
           {activeTab === 'journal' && guruMapelMode && <JournalSectionGuruMapel journals={classJournals} allStudentsByKelas={allStudentsByKelas} allAttendanceByKelas={allAttendanceByKelas} ctx={filterCtx} showToast={showToast} settings={settings} profile={profile} mapelGuru={mapelGuru} />}
           {activeTab === 'tools' && <ToolsSection tools={classTools} ctx={filterCtx} showToast={showToast} guruMapelMode={guruMapelMode} />}
           {activeTab === 'grades' && !guruMapelMode && <GradesSection students={classStudents} grades={classGrades} attendance={classAttendance} ctx={filterCtx} showToast={showToast} />}
           {activeTab === 'grades' && guruMapelMode && <GradesSectionGuruMapel allStudentsByKelas={allStudentsByKelas} grades={classGrades} ctx={filterCtx} showToast={showToast} mapelGuru={mapelGuru} />}
+          {activeTab === 'bukuinduk' && !guruMapelMode && <BukuIndukSection students={classStudents} grades={classGrades} attendance={classAttendance} ctx={filterCtx} showToast={showToast} profile={profile} settings={settings} />}
           {activeTab === 'settings' && <SettingsSection settings={settings} profile={profile} ctx={filterCtx} showToast={showToast} />}
           {activeTab === 'akademik' && (
             <AkademikView
@@ -2255,11 +2280,13 @@ export default function App() {
           {activeTab === 'statistik' && (
             <StatistikView
               students={guruMapelMode ? Object.values(allStudentsByKelas).flat().filter(s=>s.tahun===activeTahun) : classStudents}
+              allStudentsByKelas={allStudentsByKelas}
               attendance={classAttendance}
               grades={classGrades}
               journals={classJournals}
               ctx={filterCtx}
               guruMapelMode={guruMapelMode}
+              mapelGuru={mapelGuru}
             />
           )}
         </main>
@@ -2316,14 +2343,26 @@ export default function App() {
 // ==========================================
 // KKTP CHART COMPONENT (dengan toggle Sumatif / Nilai Akhir)
 // ==========================================
-const KKTPChart = ({ grades, hasGrades, kktpInterval }) => {
+const KKTPChart = ({ grades, hasGrades, kktpInterval, mapelGuru, allStudentsByKelas }) => {
   const KKTP_DEF = [
     { label:'Perlu Bimbingan', color:'#ef4444' },
     { label:'Berkembang',      color:'#f59e0b' },
     { label:'Cakap',           color:'#3b82f6' },
     { label:'Mahir',           color:'#10b981' },
   ];
-  const MAPEL_LIST = ['Pendidikan Pancasila','Bahasa Indonesia','Matematika','IPAS','Seni Budaya','Bahasa Madura'];
+  // Guru mapel: satu mapel tapi tampil semua kelas 1-6 sekaligus
+  // Guru kelas: semua mapel
+  const MAPEL_LIST = mapelGuru
+    ? [mapelGuru]
+    : ['Pendidikan Pancasila','Bahasa Indonesia','Matematika','IPAS','Seni Budaya','Bahasa Madura'];
+
+  // Guru mapel: daftar kelas dari allStudentsByKelas
+  const KELAS_LIST_MAPEL = mapelGuru && allStudentsByKelas
+    ? Object.keys(allStudentsByKelas).sort()
+    : null;
+
+  // filteredGrades: tidak difilter per kelas (semua kelas ditampilkan sekaligus)
+  const filteredGrades = grades;
 
   // Hitung S_OPTIONS dinamis dari data grades
   const S_OPTIONS = React.useMemo(() => {
@@ -2340,6 +2379,7 @@ const KKTPChart = ({ grades, hasGrades, kktpInterval }) => {
   }, [grades]);
 
   const [mode, setMode] = useState('akhir'); // 'akhir' | 'sumatif'
+  // getVal sudah pakai filteredGrades via recs di mapelData // 'akhir' | 'sumatif'
   const [selectedS, setSelectedS] = useState('s1');
 
   // Reset selectedS kalau tidak ada di options
@@ -2372,18 +2412,27 @@ const KKTPChart = ({ grades, hasGrades, kktpInterval }) => {
     return null;
   };
 
-  const mapelData = MAPEL_LIST.map(m => {
-    const recs = grades.filter(g => g.mapel === m);
-    if (!recs.length) return null;
-    const counts = [0,0,0,0];
-    recs.forEach(g => {
-      const v = getVal(g);
-      if (v !== null) counts[getKKTPIdx(v)]++;
-    });
-    const total = counts.reduce((a,b)=>a+b,0);
-    if (!total) return null;
-    return { mapel: m.replace('Pendidikan ','Pend. ').replace('Bahasa ','B. '), counts, total };
-  }).filter(Boolean);
+  // Guru mapel: data per kelas (tiap kelas jadi satu baris chart)
+  // Guru kelas: data per mapel
+  const mapelData = mapelGuru && KELAS_LIST_MAPEL
+    ? KELAS_LIST_MAPEL.map(kelas => {
+        const recs = filteredGrades.filter(g => g.mapel === mapelGuru && g.kelas === kelas);
+        if (!recs.length) return null;
+        const counts = [0,0,0,0];
+        recs.forEach(g => { const v = getVal(g); if (v !== null) counts[getKKTPIdx(v)]++; });
+        const total = counts.reduce((a,b)=>a+b,0);
+        if (!total) return null;
+        return { mapel: kelas, counts, total };
+      }).filter(Boolean)
+    : MAPEL_LIST.map(m => {
+        const recs = filteredGrades.filter(g => g.mapel === m);
+        if (!recs.length) return null;
+        const counts = [0,0,0,0];
+        recs.forEach(g => { const v = getVal(g); if (v !== null) counts[getKKTPIdx(v)]++; });
+        const total = counts.reduce((a,b)=>a+b,0);
+        if (!total) return null;
+        return { mapel: m.replace('Pendidikan ','Pend. ').replace('Bahasa ','B. '), counts, total };
+      }).filter(Boolean);
 
   return (
     <div>
@@ -2393,7 +2442,7 @@ const KKTPChart = ({ grades, hasGrades, kktpInterval }) => {
           <h3 className="font-bold text-slate-700 text-sm flex items-center gap-2">
             <TrendingUp size={14} className="text-purple-600"/> Distribusi KKTP per Mata Pelajaran
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">Kurikulum Merdeka</p>
+          <p className="text-xs text-slate-400 mt-0.5">{mapelGuru ? `${mapelGuru} · semua kelas` : 'Kurikulum Merdeka'}</p>
         </div>
         {/* Toggle mode */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -2573,8 +2622,8 @@ const KehadiranChart = ({ attendance }) => {
 // ==========================================
 // KKTP PER SISWA — seluruh siswa, nilai sumatif S1-S4 per mapel
 // ==========================================
-const KKTPperSiswa = ({ students, grades, kktpInterval }) => {
-  // S_OPTIONS dinamis dari data grades
+const KKTPperSiswa = ({ students, allStudentsByKelas, grades, kktpInterval, guruMapelMode, mapelGuru, activeTahun }) => {
+  // S_OPTIONS dinamis dari data grades + opsi Nilai Akhir untuk semua guru
   const S_OPTIONS = React.useMemo(() => {
     const maxS = Math.max(0, ...grades.map(g => {
       let m = 0;
@@ -2582,19 +2631,22 @@ const KKTPperSiswa = ({ students, grades, kktpInterval }) => {
       return m;
     }));
     const hasSas = grades.some(g => g.sas !== undefined && g.sas !== '');
-    const opts = [];
+    const opts = [{ key: 'akhir', label: 'Nilai Akhir' }]; // selalu ada di posisi pertama
     for (let i = 1; i <= Math.max(maxS, 1); i++) opts.push({ key: `s${i}`, label: `S${i}` });
     if (hasSas) opts.push({ key: 'sas', label: 'SAS' });
     return opts;
   }, [grades]);
 
-  const [selectedS, setSelectedS] = useState('s1');
+  const [selectedS, setSelectedS] = useState('akhir');
+  const [openKelas, setOpenKelas] = useState({}); // accordion state per kelas
+  const [selectedKelasFilter, setSelectedKelasFilter] = useState('Semua Kelas'); // filter kelas guru mapel
 
   React.useEffect(() => {
     if (S_OPTIONS.length && !S_OPTIONS.find(o => o.key === selectedS)) {
-      setSelectedS(S_OPTIONS[0].key);
+      setSelectedS('akhir');
     }
   }, [S_OPTIONS]);
+
   const MAPEL_LIST = ['Pendidikan Pancasila','Bahasa Indonesia','Matematika','IPAS','Seni Budaya','Bahasa Madura'];
   const iv = kktpInterval || [40, 65, 85];
   const KKTP = [
@@ -2605,12 +2657,79 @@ const KKTPperSiswa = ({ students, grades, kktpInterval }) => {
   ];
   const getKKTP = (v) => v <= iv[0] ? 0 : v <= iv[1] ? 1 : v <= iv[2] ? 2 : 3;
 
+  // Hitung nilai berdasarkan pilihan dropdown
+  const getNilai = (g) => {
+    if (selectedS === 'akhir') {
+      const sKeys = ['s1','s2','s3','s4','s5','s6','s7','s8'];
+      const vs = sKeys.map(k => parseFloat(g[k])).filter(v => !isNaN(v));
+      const avg = vs.length ? vs.reduce((a,b)=>a+b,0)/vs.length : 0;
+      const sas = parseFloat(g.sas ?? g.akhir);
+      if (avg > 0 && !isNaN(sas)) return Math.round(avg * 0.7 + sas * 0.3);
+      if (avg > 0) return Math.round(avg);
+      if (!isNaN(sas)) return Math.round(sas);
+      return null;
+    }
+    const v = parseFloat(g[selectedS]);
+    return isNaN(v) ? null : v;
+  };
+
+  const KELAS_LIST_RAW = guruMapelMode && allStudentsByKelas ? Object.keys(allStudentsByKelas).sort() : null;
+  const KELAS_LIST_SORTED = KELAS_LIST_RAW; // semua kelas untuk accordion
+  // Daftar untuk dropdown filter (tambah Semua Kelas di depan)
+  const KELAS_FILTER_OPTIONS = KELAS_LIST_RAW ? ['Semua Kelas', ...KELAS_LIST_RAW] : null;
+
+  // Render satu kelompok siswa (shared guru kelas & mapel)
+  const renderSiswaList = (siswaList, gradeList, mapelListToUse) => {
+    const mapped = (siswaList || []).map((s, idx) => {
+      const mapelNilai = mapelListToUse.map(m => {
+        const g = (gradeList||[]).find(gd => gd.siswaId === s.id && gd.mapel === m);
+        if (!g) return null;
+        const v = getNilai(g);
+        if (v === null) return null;
+        const label = m.replace('Pendidikan ','Pend. ').replace('Bahasa ','B. ');
+        return { mapel: label, nilai: v, kktp: getKKTP(v) };
+      }).filter(Boolean);
+      return { ...s, idx, mapelNilai };
+    });
+    if (!mapped.length) return <p className="text-slate-400 text-xs italic p-3">Belum ada data siswa.</p>;
+    const labelKosong = S_OPTIONS.find(t=>t.key===selectedS)?.label || '';
+    return (
+      <div className="space-y-2">
+        {mapped.map((s) => (
+          <div key={s.id} className="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                <span className="text-[10px] font-black text-slate-500">{s.idx+1}</span>
+              </div>
+              <p className="text-xs font-bold text-slate-800">{s.nama}</p>
+              {s.mapelNilai.length === 0 && <span className="text-[10px] text-slate-400 italic ml-1">— belum ada {labelKosong}</span>}
+            </div>
+            {s.mapelNilai.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pl-9">
+                {s.mapelNilai.map(mn => {
+                  const k = KKTP[mn.kktp];
+                  return (
+                    <span key={mn.mapel} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border"
+                      style={{background:k.bg, borderColor:k.border, color:k.color}}>
+                      {mn.mapel}: {mn.nilai} · {k.label}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Guru kelas: siswaNilai biasa
   const siswaNilai = (students||[]).map(s => {
     const mapelNilai = MAPEL_LIST.map(m => {
       const g = (grades||[]).find(gd => gd.siswaId === s.id && gd.mapel === m);
       if (!g) return null;
-      const v = parseFloat(g[selectedS]);
-      if (isNaN(v)) return null;
+      const v = getNilai(g);
+      if (v === null) return null;
       return { mapel: m.replace('Pendidikan ','Pend. ').replace('Bahasa ','B. '), nilai: v, kktp: getKKTP(v) };
     }).filter(Boolean);
     return { ...s, mapelNilai };
@@ -2623,47 +2742,101 @@ const KKTPperSiswa = ({ students, grades, kktpInterval }) => {
           <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <Users size={14} className="text-purple-600"/> KKTP per Siswa
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">Capaian KKTP seluruh siswa per Sumatif</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {guruMapelMode ? `Capaian KKTP per kelas · ${mapelGuru}` : 'Capaian KKTP seluruh siswa'}
+          </p>
         </div>
-        <select value={selectedS} onChange={e => setSelectedS(e.target.value)}
-          className="bg-white border border-slate-200 text-purple-800 px-2.5 py-1.5 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500">
-          {S_OPTIONS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-        </select>
+        {/* Dropdown filter kelas (guru mapel) + dropdown nilai */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {KELAS_FILTER_OPTIONS && (
+            <select value={selectedKelasFilter} onChange={e => setSelectedKelasFilter(e.target.value)}
+              className="bg-purple-50 border border-purple-200 text-purple-800 px-2.5 py-1.5 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500">
+              {KELAS_FILTER_OPTIONS.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+          )}
+          <select value={selectedS} onChange={e => setSelectedS(e.target.value)}
+            className="bg-white border border-slate-200 text-purple-800 px-2.5 py-1.5 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500">
+            {S_OPTIONS.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+          </select>
+        </div>
       </div>
 
-      <div className="p-5">
-        {siswaNilai.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-slate-300">
-            <Users size={32} className="mb-2"/>
-            <p className="text-sm text-slate-400 font-medium">Belum ada data siswa.</p>
+      <div className="p-4">
+        {guruMapelMode && KELAS_LIST_SORTED ? (
+          // ── GURU MAPEL: accordion dropdown per kelas ──
+          <div className="space-y-2">
+            {KELAS_LIST_SORTED
+              .filter(kelas => selectedKelasFilter === 'Semua Kelas' || kelas === selectedKelasFilter)
+              .map(kelas => {
+              const siswaKelas = (allStudentsByKelas[kelas] || []).filter(s => !activeTahun || s.tahun === activeTahun).sort((a,b)=>a.nama.localeCompare(b.nama));
+              const gradesKelas = (grades || []).filter(g => g.kelas === kelas && g.mapel === mapelGuru);
+              const isOpen = openKelas[kelas] !== false; // default open
+              const countSiswa = siswaKelas.length;
+              const countHasNilai = siswaKelas.filter(s => gradesKelas.find(g => g.siswaId === s.id && getNilai(g) !== null)).length;
+              return (
+                <div key={kelas} className="border border-slate-100 rounded-xl overflow-hidden">
+                  {/* Accordion header — tombol dropdown */}
+                  <button
+                    onClick={() => setOpenKelas(prev => ({...prev, [kelas]: !isOpen}))}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-purple-50 transition text-left">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}>
+                        <ChevronRight size={14} className="text-purple-600"/>
+                      </span>
+                      <span className="text-xs font-black text-purple-800">{kelas}</span>
+                      <span className="text-[10px] text-slate-400">{countSiswa} siswa</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {countHasNilai > 0
+                        ? <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">{countHasNilai} punya nilai</span>
+                        : <span className="text-[10px] text-amber-500 italic">belum ada nilai</span>}
+                    </div>
+                  </button>
+                  {/* Accordion content */}
+                  {isOpen && (
+                    <div className="p-3">
+                      {renderSiswaList(siswaKelas, gradesKelas, [mapelGuru])}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <div className="space-y-3">
-            {siswaNilai.map((s, idx) => (
-              <div key={s.id} className="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                    <span className="text-[10px] font-black text-slate-500">{idx+1}</span>
+          // ── GURU KELAS: tampilan biasa ──
+          siswaNilai.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-slate-300">
+              <Users size={32} className="mb-2"/>
+              <p className="text-sm text-slate-400 font-medium">Belum ada data siswa.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {siswaNilai.map((s, idx) => (
+                <div key={s.id} className="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 transition">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                      <span className="text-[10px] font-black text-slate-500">{idx+1}</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">{s.nama}</p>
+                    {s.mapelNilai.length === 0 && <span className="text-[10px] text-slate-400 italic ml-1">— belum ada {S_OPTIONS.find(t=>t.key===selectedS)?.label}</span>}
                   </div>
-                  <p className="text-sm font-bold text-slate-800">{s.nama}</p>
-                  {s.mapelNilai.length === 0 && <span className="text-[10px] text-slate-400 italic ml-1">— belum ada nilai {S_OPTIONS.find(t=>t.key===selectedS)?.label}</span>}
+                  {s.mapelNilai.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-9">
+                      {s.mapelNilai.map(mn => {
+                        const k = KKTP[mn.kktp];
+                        return (
+                          <span key={mn.mapel} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border"
+                            style={{background:k.bg, borderColor:k.border, color:k.color}}>
+                            {mn.mapel}: {mn.nilai} · {k.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                {s.mapelNilai.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pl-9">
-                    {s.mapelNilai.map(mn => {
-                      const k = KKTP[mn.kktp];
-                      return (
-                        <span key={mn.mapel} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border"
-                          style={{background:k.bg, borderColor:k.border, color:k.color}}>
-                          {mn.mapel}: {mn.nilai} · {k.label}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>
@@ -2737,7 +2910,25 @@ const GrafikDistribusi = ({ students, grades, mapelList }) => {
   );
 };
 
-const Dashboard = ({ profile, students, attendance, journals, grades, ctx, setActiveTab, guruMapelMode, jadwalData }) => {
+// ─────────────────────────────────────────────────────────────
+// Helper: status tanggal berdasarkan kalender akademik
+// ─────────────────────────────────────────────────────────────
+const getStatusTanggal = (tanggal, kalenderData) => {
+  if (!tanggal) return { status: 'unknown', label: '', warna: '' };
+  const { hariMerah = {}, hariFakultatif = {}, awal = '', akhir = '' } = kalenderData || {};
+  const dt = new Date(tanggal + 'T00:00:00');
+  const dow = dt.getDay(); // 0=Minggu
+  if (dow === 0) return { status: 'minggu', label: 'Hari Minggu', warna: 'blue' };
+  if (awal && akhir && (tanggal < awal || tanggal > akhir))
+    return { status: 'luar_rentang', label: 'Luar Rentang Semester', warna: 'slate' };
+  if (hariMerah[tanggal]) return { status: 'libur', label: hariMerah[tanggal] || 'Hari Libur', warna: 'red' };
+  if (hariFakultatif[tanggal]) return { status: 'fakultatif', label: hariFakultatif[tanggal] || 'Efektif Fakultatif', warna: 'amber' };
+  return { status: 'efektif', label: 'Hari Efektif', warna: 'emerald' };
+};
+
+const BLOCKED_STATUSES = ['minggu', 'libur', 'luar_rentang'];
+
+const Dashboard = ({ profile, students, attendance, journals, grades, ctx, setActiveTab, guruMapelMode, jadwalData, kalenderData }) => {
   const today = getTodayDate();
   const todayAttendance = attendance.filter(a => a.tanggal === today);
   const presentToday = todayAttendance.filter(a => a.status === 'Hadir').length;
@@ -2933,35 +3124,60 @@ const Dashboard = ({ profile, students, attendance, journals, grades, ctx, setAc
           </h2>
 
           {/* Card Jadwal — sub-card semi-transparent */}
-          <div className="rounded-2xl p-4 mb-4"
-            style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)'}}>
-            <p className="text-purple-200 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
-              ≡ JADWAL MENGAJAR ANDA
-            </p>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <h3 className="text-white font-black text-lg leading-tight">Jadwal Hari Ini</h3>
-                <p className="text-purple-200 text-sm mb-2">{hariIniName}</p>
-                {jadwalHariIni.length === 0 ? (
-                  <p className="text-purple-300 text-sm">Tidak ada jadwal untuk hari ini</p>
-                ) : (
-                  <div className="space-y-1">
-                    {jadwalHariIni.filter(j=>j&&j.mapel&&j.mapel.toLowerCase()!=='istirahat').slice(0,3).map((j,i) => (
-                      <p key={i} className="text-white text-xs bg-white/10 rounded-lg px-2 py-1 inline-block mr-1.5">
-                        {shortMapel(j.mapel)} {j.jamMulai ? `${j.jamMulai}` : ''}
-                      </p>
-                    ))}
-                    {jadwalHariIni.length > 3 && <p className="text-purple-300 text-xs">+{jadwalHariIni.length - 3} lagi...</p>}
+          {(() => {
+            const todayStr = new Date().toISOString().slice(0,10);
+            const statusHariIni = getStatusTanggal(todayStr, kalenderData);
+            const BADGE_STYLE = {
+              red:     'bg-red-500/80 text-white',
+              blue:    'bg-blue-500/80 text-white',
+              amber:   'bg-amber-400/80 text-white',
+              slate:   'bg-slate-500/80 text-white',
+              emerald: '',
+            };
+            const badgeStyle = BADGE_STYLE[statusHariIni.warna] || '';
+            return (
+              <div className="rounded-2xl p-4 mb-4"
+                style={{background:'rgba(255,255,255,0.12)',border:'1px solid rgba(255,255,255,0.2)'}}>
+                <p className="text-purple-200 text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                  ≡ JADWAL MENGAJAR ANDA
+                </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h3 className="text-white font-black text-lg leading-tight">Jadwal Hari Ini</h3>
+                      {statusHariIni.status !== 'efektif' && badgeStyle && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeStyle}`}>
+                          {statusHariIni.status === 'minggu'      ? '🔴 Hari Minggu' :
+                           statusHariIni.status === 'libur'       ? `🔴 ${statusHariIni.label}` :
+                           statusHariIni.status === 'fakultatif'  ? `🟡 ${statusHariIni.label}` :
+                           statusHariIni.status === 'luar_rentang'? '⚫ Luar Rentang' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-purple-200 text-sm mb-2">{hariIniName}</p>
+                    {BLOCKED_STATUSES.includes(statusHariIni.status) ? (
+                      <p className="text-purple-300 text-sm italic">Tidak ada kegiatan belajar mengajar hari ini</p>
+                    ) : jadwalHariIni.length === 0 ? (
+                      <p className="text-purple-300 text-sm">Tidak ada jadwal untuk hari ini</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {jadwalHariIni.filter(j=>j&&j.mapel&&j.mapel.toLowerCase()!=='istirahat').slice(0,3).map((j,i) => (
+                          <p key={i} className="text-white text-xs bg-white/10 rounded-lg px-2 py-1 inline-block mr-1.5">
+                            {shortMapel(j.mapel)} {j.jamMulai ? `${j.jamMulai}` : ''}
+                          </p>
+                        ))}
+                        {jadwalHariIni.length > 3 && <p className="text-purple-300 text-xs">+{jadwalHariIni.length - 3} lagi...</p>}
+                      </div>
+                    )}
                   </div>
-                )}
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+                    style={{background:'rgba(255,255,255,0.15)'}}>
+                    <Bell size={22} className="text-yellow-300" fill="currentColor"/>
+                  </div>
+                </div>
               </div>
-              {/* Bell icon */}
-              <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
-                style={{background:'rgba(255,255,255,0.15)'}}>
-                <Bell size={22} className="text-yellow-300" fill="currentColor"/>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* Pills info bawah: Tahun Ajaran & Semester */}
           <div className="flex gap-3">
@@ -2999,6 +3215,7 @@ const Dashboard = ({ profile, students, attendance, journals, grades, ctx, setAc
             { id:'grades',     icon:Award,         label:'Nilai',      bg:'#fff7ed', color:'#c2410c', iconBg:'#ffedd5' },
             { id:'statistik',  icon:TrendingUp,    label:'Statistik',  bg:'#f5f3ff', color:'#6d28d9', iconBg:'#ede9fe' },
             { id:'tools',      icon:FolderOpen,    label:'Perangkat',  bg:'#fffbeb', color:'#b45309', iconBg:'#fef3c7' },
+            ...(!guruMapelMode ? [{ id:'bukuinduk', icon:FileText,    label:'Buku Induk', bg:'#fdf2f8', color:'#be185d', iconBg:'#fce7f3' }] : []),
           ].map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               className="flex flex-col items-center gap-2 p-3 rounded-2xl transition-all active:scale-95 hover:shadow-md"
@@ -3046,22 +3263,42 @@ const Dashboard = ({ profile, students, attendance, journals, grades, ctx, setAc
 // ==========================================
 // STATISTIK VIEW — semua widget analitik
 // ==========================================
-const StatistikView = ({ students, attendance, grades, journals, ctx, guruMapelMode }) => {
+const StatistikView = ({ students, allStudentsByKelas, attendance, grades, journals, ctx, guruMapelMode, mapelGuru }) => {
   const [kktpInterval, setKktpInterval] = useState([40, 65, 85]);
+
+  // Guru mapel: load attendance_mapel langsung dari Firestore (semua kelas)
+  const [mapelAttendance, setMapelAttendance] = useState([]);
+  React.useEffect(() => {
+    if (!guruMapelMode || !ctx.dbId) return;
+    const unsub = onSnapshot(collection(db, 'users', ctx.dbId, 'attendance_mapel'), snap => {
+      setMapelAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [guruMapelMode, ctx.dbId]);
+
+  // attendance efektif: guru mapel pakai mapelAttendance, guru kelas pakai attendance prop
+  const effectiveAttendance = guruMapelMode
+    ? mapelAttendance.filter(a => a.tahun === ctx.activeTahun && a.semester === ctx.activeSemester)
+    : attendance;
   const [editInterval, setEditInterval] = useState(false);
   const [tempInterval, setTempInterval] = useState([40, 65, 85]);
+
+  // Untuk guru mapel: filter grades hanya ke mapelGuru (exclude formatif __formatif__mapel__)
+  const effectiveGrades = guruMapelMode && mapelGuru
+    ? grades.filter(g => g.mapel === mapelGuru)
+    : grades;
 
   const analysis = (() => {
     let nilaiList = [];
     students.forEach(s => {
-      const gradeRecords = grades.filter(g => g.siswaId === s.id);
+      const gradeRecords = effectiveGrades.filter(g => g.siswaId === s.id);
       gradeRecords.forEach(g => {
         let sum = 0, cnt = 0;
         [1,2,3,4,5,6,7,8].forEach(n => { if (g[`s${n}`]) { sum += Number(g[`s${n}`]); cnt++; } });
         const avg = cnt > 0 ? sum / cnt : 0;
-        const akhir = Number(g.akhir || 0);
+        const akhir = Number(g.sas || g.akhir || 0);
         let final = 0;
-        if (avg > 0 && akhir > 0) final = (avg + akhir) / 2;
+        if (avg > 0 && akhir > 0) final = (avg * 0.7) + (akhir * 0.3);
         else if (avg > 0) final = avg;
         else if (akhir > 0) final = akhir;
         if (final > 0) nilaiList.push({ siswaId: s.id, final });
@@ -3086,7 +3323,7 @@ const StatistikView = ({ students, attendance, grades, journals, ctx, guruMapelM
         </div>
         <div>
           <h2 className="text-white font-black text-lg leading-tight">Statistik & Analitik</h2>
-          <p className="text-purple-200 text-xs">{ctx.activeSemester} · {ctx.activeTahun} · {ctx.loggedInKelas}</p>
+          <p className="text-purple-200 text-xs">{ctx.activeSemester} · {ctx.activeTahun} · {guruMapelMode ? `Guru ${mapelGuru}` : ctx.loggedInKelas}</p>
         </div>
       </div>
 
@@ -3143,12 +3380,12 @@ const StatistikView = ({ students, attendance, grades, journals, ctx, guruMapelM
         </div>
 
         <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-100" style={{boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
-          <KKTPChart grades={grades} hasGrades={analysis.hasGrades} kktpInterval={kktpInterval} />
+          <KKTPChart grades={effectiveGrades} hasGrades={analysis.hasGrades} kktpInterval={kktpInterval} mapelGuru={guruMapelMode ? mapelGuru : null} allStudentsByKelas={guruMapelMode ? allStudentsByKelas : null} />
         </div>
       </div>
 
       {/* KKTP per Siswa */}
-      <KKTPperSiswa students={students} grades={grades} kktpInterval={kktpInterval} />
+      <KKTPperSiswa students={students} allStudentsByKelas={allStudentsByKelas} grades={effectiveGrades} kktpInterval={kktpInterval} guruMapelMode={guruMapelMode} mapelGuru={mapelGuru} activeTahun={ctx.activeTahun} />
     </div>
   );
 };
@@ -3159,16 +3396,35 @@ const StatistikView = ({ students, attendance, grades, journals, ctx, guruMapelM
 const StudentSection = ({ students, ctx, showToast }) => {
   const [formData, setFormData] = useState({ nisn: '', nis: '', nama: '', jk: 'L' });
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.nama) return showToast("Nama wajib diisi", "error");
-    const newId = generateId();
-    const newStudent = { ...formData, kelas: ctx.loggedInKelas, tahun: ctx.activeTahun };
-    await setDoc(doc(db, 'users', ctx.dbId, 'students', newId), newStudent);
-    showToast("Data siswa berhasil ditambahkan");
+    if (editingId) {
+      await updateDoc(doc(db, 'users', ctx.dbId, 'students', editingId), { ...formData });
+      showToast("Data siswa berhasil diperbarui");
+    } else {
+      const newId = generateId();
+      const newStudent = { ...formData, kelas: ctx.loggedInKelas, tahun: ctx.activeTahun };
+      await setDoc(doc(db, 'users', ctx.dbId, 'students', newId), newStudent);
+      showToast("Data siswa berhasil ditambahkan");
+    }
     setFormData({ nisn: '', nis: '', nama: '', jk: 'L' });
+    setEditingId(null);
     setShowModal(false);
+  };
+
+  const handleEdit = (s) => {
+    setFormData({ nisn: s.nisn || '', nis: s.nis || '', nama: s.nama || '', jk: s.jk || 'L' });
+    setEditingId(s.id);
+    setShowModal(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingId(null);
+    setFormData({ nisn: '', nis: '', nama: '', jk: 'L' });
   };
 
   const handleDelete = async (id) => {
@@ -3252,7 +3508,7 @@ const StudentSection = ({ students, ctx, showToast }) => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Tambah Siswa Baru">
+      <Modal isOpen={showModal} onClose={handleCloseModal} title={editingId ? "Edit Data Siswa" : "Tambah Siswa Baru"}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Nama Lengkap</label>
@@ -3275,7 +3531,7 @@ const StudentSection = ({ students, ctx, showToast }) => {
               <option value="P">Perempuan (P)</option>
             </select>
           </div>
-          <button type="submit" className="w-full bg-purple-700 text-white font-bold py-3 rounded-xl hover:bg-purple-800 transition">Simpan Siswa</button>
+          <button type="submit" className="w-full bg-purple-700 text-white font-bold py-3 rounded-xl hover:bg-purple-800 transition">{editingId ? "Simpan Perubahan" : "Simpan Siswa"}</button>
         </form>
       </Modal>
 
@@ -3323,7 +3579,10 @@ const StudentSection = ({ students, ctx, showToast }) => {
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.jk === 'L' ? 'bg-blue-50 text-blue-600' : 'bg-pink-50 text-pink-600'}`}>{s.jk}</span>
                     </td>
                     <td className="p-2 text-center">
-                      <button onClick={() => handleDelete(s.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg transition"><Trash2 size={13}/></button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => handleEdit(s)} className="p-1 text-amber-500 hover:bg-amber-50 rounded-lg transition"><Edit2 size={13}/></button>
+                        <button onClick={() => handleDelete(s.id)} className="p-1 text-red-400 hover:bg-red-50 rounded-lg transition"><Trash2 size={13}/></button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -3339,7 +3598,7 @@ const StudentSection = ({ students, ctx, showToast }) => {
 // ==========================================
 // 3. ATTENDANCE COMPONENT
 // ==========================================
-const AttendanceSection = ({ students, attendance, ctx, showToast, settings, profile }) => {
+const AttendanceSection = ({ students, attendance, ctx, showToast, settings, profile, kalenderData }) => {
   const [date, setDate] = useState(getTodayDate());
   const [exportMonth, setExportMonth] = useState(getTodayDate().substring(5, 7));
   const [exportYear, setExportYear] = useState(getTodayDate().substring(0, 4));
@@ -3617,45 +3876,73 @@ const AttendanceSection = ({ students, attendance, ctx, showToast, settings, pro
           className="bg-purple-50 border border-purple-200 text-purple-900 px-3 py-1.5 rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-purple-400" />
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs">
-                <th className="p-2 font-bold w-8 text-center">No</th>
-                <th className="p-2 font-bold">Nama Lengkap</th>
-                <th className="p-2 font-bold text-center">Status Kehadiran</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s, idx) => {
-                const att = attendance.find(a => a.siswaId === s.id && a.tanggal === date);
-                const currentStatus = att ? att.status : '';
-                return (
-                  <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                    <td className="p-2 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
-                    <td className="p-2 font-bold text-slate-800 text-xs">{s.nama}</td>
-                    <td className="p-2">
-                      <div className="flex justify-center gap-1">
-                        {['Hadir', 'Sakit', 'Izin', 'Alpha'].map(st => (
-                          <button key={st} onClick={() => handleStatusChange(s.id, st)}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
-                              currentStatus === st ?
-                                st==='Hadir'?'bg-emerald-500 text-white':st==='Sakit'?'bg-blue-500 text-white':st==='Izin'?'bg-amber-500 text-white':'bg-red-500 text-white'
-                              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                            {st}
-                          </button>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {students.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-slate-400 text-xs">Belum ada siswa di kelas ini.</td></tr>}
-            </tbody>
-          </table>
+      {/* Banner status kalender */}
+      {(() => {
+        const status = getStatusTanggal(date, kalenderData);
+        if (status.status === 'efektif') return null;
+        const BANNER = {
+          minggu:       { bg:'bg-blue-50 border-blue-200',   icon:'🔵', txt:'text-blue-800',   msg:`Hari Minggu — absensi tidak tersedia` },
+          libur:        { bg:'bg-red-50 border-red-200',     icon:'🔴', txt:'text-red-800',    msg:`Hari Libur: ${status.label} — absensi tidak tersedia` },
+          luar_rentang: { bg:'bg-slate-50 border-slate-300', icon:'⚫', txt:'text-slate-600',  msg:`Tanggal di luar rentang semester aktif — absensi tidak tersedia` },
+          fakultatif:   { bg:'bg-amber-50 border-amber-200', icon:'🟡', txt:'text-amber-800',  msg:`Efektif Fakultatif: ${status.label}` },
+        };
+        const b = BANNER[status.status] || BANNER.luar_rentang;
+        return (
+          <div className={`rounded-xl border px-4 py-3 flex items-center gap-2.5 ${b.bg}`}>
+            <span className="text-base">{b.icon}</span>
+            <p className={`text-xs font-bold ${b.txt}`}>{b.msg}</p>
+          </div>
+        );
+      })()}
+
+      {/* Tabel absensi — diblokir jika hari libur/minggu/luar rentang */}
+      {(() => {
+        const status = getStatusTanggal(date, kalenderData);
+        const isBlocked = BLOCKED_STATUSES.includes(status.status);
+        return (
+        <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden ${isBlocked ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs">
+                  <th className="p-2 font-bold w-8 text-center">No</th>
+                  <th className="p-2 font-bold">Nama Lengkap</th>
+                  <th className="p-2 font-bold text-center">Status Kehadiran</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s, idx) => {
+                  const att = attendance.find(a => a.siswaId === s.id && a.tanggal === date);
+                  const currentStatus = att ? att.status : '';
+                  return (
+                    <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                      <td className="p-2 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
+                      <td className="p-2 font-bold text-slate-800 text-xs">{s.nama}</td>
+                      <td className="p-2">
+                        <div className="flex justify-center gap-1">
+                          {['Hadir', 'Sakit', 'Izin', 'Alpha'].map(st => (
+                            <button key={st}
+                              disabled={isBlocked}
+                              onClick={() => !isBlocked && handleStatusChange(s.id, st)}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold transition ${
+                                currentStatus === st ?
+                                  st==='Hadir'?'bg-emerald-500 text-white':st==='Sakit'?'bg-blue-500 text-white':st==='Izin'?'bg-amber-500 text-white':'bg-red-500 text-white'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                              {st}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {students.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-slate-400 text-xs">Belum ada siswa di kelas ini.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+        );
+      })()}
 
       {/* ── TABEL REKAP ABSENSI PER SISWA ── */}
       {students.length > 0 && (
@@ -3666,17 +3953,17 @@ const AttendanceSection = ({ students, attendance, ctx, showToast, settings, pro
             <span className="text-xs text-slate-400 font-medium ml-1">— Total kehadiran yang telah diinput</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left text-xs">
               <thead>
-                <tr className="bg-slate-800 text-slate-100 text-xs">
-                  <th className="p-2.5 font-bold border-r border-slate-700 w-8 text-center">No</th>
-                  <th className="p-2.5 font-bold border-r border-slate-700 min-w-[150px]">Nama Siswa</th>
-                  <th className="p-2.5 font-bold text-center border-r border-slate-700 bg-emerald-900 w-20">Hadir</th>
-                  <th className="p-2.5 font-bold text-center border-r border-slate-700 bg-blue-900 w-20">Sakit</th>
-                  <th className="p-2.5 font-bold text-center border-r border-slate-700 bg-amber-900 w-20">Izin</th>
-                  <th className="p-2.5 font-bold text-center border-r border-slate-700 bg-red-900 w-20">Alpa</th>
-                  <th className="p-2.5 font-bold text-center border-r border-slate-700 w-24">Jml Hari</th>
-                  <th className="p-2.5 font-bold text-center w-24">% Hadir</th>
+                <tr className="bg-slate-800 text-slate-100">
+                  <th className="p-2 font-bold border-r border-slate-700 w-6 text-center">No</th>
+                  <th className="p-2 font-bold border-r border-slate-700">Nama</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-emerald-900 w-10">H</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-blue-900 w-10">S</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-amber-900 w-10">I</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-red-900 w-10">A</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 w-12">Hari</th>
+                  <th className="p-2 font-bold text-center w-12">%</th>
                 </tr>
               </thead>
               <tbody>
@@ -3691,25 +3978,15 @@ const AttendanceSection = ({ students, attendance, ctx, showToast, settings, pro
                   const pColor = persen === null ? '' : persen >= 80 ? 'text-emerald-600' : persen >= 60 ? 'text-amber-600' : 'text-red-600';
                   return (
                     <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                      <td className="p-2.5 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{idx+1}</td>
-                      <td className="p-2.5 font-bold text-slate-800 text-xs border-r border-slate-100">{s.nama}</td>
-                      <td className="p-2.5 text-center border-r border-slate-100 bg-emerald-50/30">
-                        {hasData ? <span className="text-sm font-black text-emerald-600">{hadir}</span> : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="p-2.5 text-center border-r border-slate-100 bg-blue-50/20">
-                        {hasData ? <span className="text-sm font-black text-blue-600">{sakit}</span> : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="p-2.5 text-center border-r border-slate-100 bg-amber-50/20">
-                        {hasData ? <span className="text-sm font-black text-amber-600">{izin}</span> : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="p-2.5 text-center border-r border-slate-100 bg-red-50/20">
-                        {hasData ? <span className="text-sm font-black text-red-600">{alpha}</span> : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="p-2.5 text-center border-r border-slate-100">
-                        {hasData ? <span className="text-sm font-black text-slate-700">{jumlahHari}</span> : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                      <td className="p-2.5 text-center">
-                        {persen !== null ? <span className={`text-sm font-black ${pColor}`}>{persen}%</span> : <span className="text-slate-300 text-xs">—</span>}
+                      <td className="p-2 text-center font-bold text-slate-400 border-r border-slate-100">{idx+1}</td>
+                      <td className="p-2 font-semibold text-slate-800 border-r border-slate-100" style={{wordBreak:'break-word',minWidth:'100px'}}>{s.nama}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-emerald-50/30 font-black text-emerald-600">{hasData ? hadir : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-blue-50/20 font-black text-blue-600">{hasData ? sakit : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-amber-50/20 font-black text-amber-600">{hasData ? izin : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-red-50/20 font-black text-red-600">{hasData ? alpha : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 font-black text-slate-700">{hasData ? jumlahHari : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center">
+                        {persen !== null ? <span className={`font-black ${pColor}`}>{persen}%</span> : <span className="text-slate-300">—</span>}
                       </td>
                     </tr>
                   );
@@ -3723,14 +4000,14 @@ const AttendanceSection = ({ students, attendance, ctx, showToast, settings, pro
                   const tJml = tH + tS + tI + tA;
                   const tPersen = tJml > 0 ? Math.round((tH / tJml) * 100) : null;
                   return (
-                    <tr className="bg-slate-100 border-t-2 border-slate-300">
-                      <td colSpan={2} className="p-2.5 font-black text-slate-700 text-xs border-r border-slate-300 text-right pr-4">TOTAL</td>
-                      <td className="p-2.5 text-center font-black text-emerald-700 border-r border-slate-300 bg-emerald-100">{tH}</td>
-                      <td className="p-2.5 text-center font-black text-blue-700 border-r border-slate-300 bg-blue-100">{tS}</td>
-                      <td className="p-2.5 text-center font-black text-amber-700 border-r border-slate-300 bg-amber-100">{tI}</td>
-                      <td className="p-2.5 text-center font-black text-red-700 border-r border-slate-300 bg-red-100">{tA}</td>
-                      <td className="p-2.5 text-center font-black text-slate-700 border-r border-slate-300">{tJml}</td>
-                      <td className="p-2.5 text-center font-black text-slate-700">{tPersen !== null ? `${tPersen}%` : '—'}</td>
+                    <tr className="bg-slate-100 border-t-2 border-slate-300 font-black">
+                      <td colSpan={2} className="p-2 text-slate-700 border-r border-slate-300 text-right pr-3">Total</td>
+                      <td className="p-2 text-center text-emerald-700 border-r border-slate-300 bg-emerald-100">{tH}</td>
+                      <td className="p-2 text-center text-blue-700 border-r border-slate-300 bg-blue-100">{tS}</td>
+                      <td className="p-2 text-center text-amber-700 border-r border-slate-300 bg-amber-100">{tI}</td>
+                      <td className="p-2 text-center text-red-700 border-r border-slate-300 bg-red-100">{tA}</td>
+                      <td className="p-2 text-center text-slate-700 border-r border-slate-300">{tJml}</td>
+                      <td className="p-2 text-center text-slate-700">{tPersen !== null ? `${tPersen}%` : '—'}</td>
                     </tr>
                   );
                 })()}
@@ -4797,7 +5074,7 @@ const GradesSection = ({ students, grades, attendance, ctx, showToast }) => {
       const g = grades.find(gd=>gd.siswaId===s.id&&gd.mapel===mapelAktif)||{};
       const row = {No:i+1, Nama:s.nama};
       for (let n=1;n<=jumlahS;n++) row[`S${n}`]=g[`s${n}`]||'';
-      row['SAS']=g.sas||''; row['Kehadiran (%)']=getNilaiKehadiran(s.id)??''; row['Nilai Akhir']=hitungNilaiAkhir(g)??'';
+      row['SAS']=g.sas||''; row['Nilai Akhir']=hitungNilaiAkhir(g)??'';
       return row;
     });
     exportToExcel(rows, `Sumatif_${mapelAktif}_${ctx.loggedInKelas}`, showToast);
@@ -4869,6 +5146,40 @@ const GradesSection = ({ students, grades, attendance, ctx, showToast }) => {
       {/* ── TAB SUMATIF ── */}
       {activeTab==='sumatif' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          {/* Paste zone — 1 kolom */}
+          <div className="px-4 pt-3 pb-3 flex items-center gap-2 flex-wrap border-b border-slate-100 bg-slate-50">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">📋 Paste kolom:</span>
+            <select
+              id="pasteTargetCol"
+              className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+              defaultValue="s1"
+            >
+              {sNums.map(n => <option key={n} value={`s${n}`}>S{n}</option>)}
+              <option value="sas">SAS</option>
+            </select>
+            <div
+              onPaste={(e) => {
+                e.preventDefault();
+                const field = document.getElementById('pasteTargetCol').value;
+                const text = e.clipboardData.getData('text/plain');
+                if (!text.trim()) return;
+                const vals = text.trim().split('\n').map(r => r.split('\t')[0].trim().replace(',','.'));
+                let updated = 0;
+                vals.forEach((raw, ri) => {
+                  if (ri >= students.length) return;
+                  const v = parseFloat(raw);
+                  if (isNaN(v) || v < 0 || v > 100) return;
+                  handleGradeChange(students[ri].id, field, String(v));
+                  updated++;
+                });
+                showToast(`${updated} nilai berhasil di-paste ✓`);
+              }}
+              tabIndex={0}
+              className="flex-1 min-w-[160px] border-2 border-dashed border-purple-200 rounded-xl px-3 py-2 text-[11px] text-slate-400 text-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 focus:outline-none focus:border-purple-500 focus:bg-purple-50 transition select-none"
+            >
+              Klik di sini → Ctrl+V
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left whitespace-nowrap">
               <thead>
@@ -5049,10 +5360,11 @@ const GradesSection = ({ students, grades, attendance, ctx, showToast }) => {
 };
 
 // ==========================================
-// GURU MAPEL — ABSENSI (view-only, download PDF)
+// GURU MAPEL — ABSENSI AKTIF (tampilan identik guru kelas + rekap per kelas)
 // ==========================================
-const AttendanceSectionGuruMapel = ({ allStudentsByKelas, allAttendanceByKelas, ctx, showToast, settings, profile, mapelGuru }) => {
+const AttendanceSectionGuruMapel = ({ allStudentsByKelas, ctx, showToast, settings, profile, mapelGuru, kalenderData }) => {
   const [viewKelas, setViewKelas] = useState(KELAS_OPTIONS[0]);
+  const [date, setDate] = useState(getTodayDate());
   const [exportMonth, setExportMonth] = useState(getTodayDate().substring(5, 7));
   const [exportYear, setExportYear] = useState(getTodayDate().substring(0, 4));
 
@@ -5060,12 +5372,59 @@ const AttendanceSectionGuruMapel = ({ allStudentsByKelas, allAttendanceByKelas, 
     .filter(s => s.tahun === ctx.activeTahun)
     .sort((a, b) => a.nama.localeCompare(b.nama));
 
-  const attendance = allAttendanceByKelas[viewKelas] || [];
+  // Realtime listener absensi mapel (subcollection terpisah di akun guru mapel)
+  const [mapelAttendance, setMapelAttendance] = useState([]);
+  React.useEffect(() => {
+    if (!ctx.dbId) return;
+    const unsub = onSnapshot(collection(db, 'users', ctx.dbId, 'attendance_mapel'), snap => {
+      setMapelAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, [ctx.dbId]);
 
-  // Hitung rekap hari ini untuk tampilan
-  const today = getTodayDate();
-  const todayAtt = attendance.filter(a => a.tanggal === today);
-  const hadirHariIni = todayAtt.filter(a => a.status === 'Hadir').length;
+  // Filter absensi untuk kelas & semester aktif
+  const attendance = mapelAttendance.filter(
+    a => a.kelas === viewKelas && a.tahun === ctx.activeTahun && a.semester === ctx.activeSemester
+  );
+
+  const handleStatusChange = async (siswaId, status) => {
+    const existing = attendance.find(a => a.siswaId === siswaId && a.tanggal === date);
+    if (existing) {
+      await setDoc(doc(db, 'users', ctx.dbId, 'attendance_mapel', existing.id), { status }, { merge: true });
+    } else {
+      await setDoc(doc(db, 'users', ctx.dbId, 'attendance_mapel', generateId()), {
+        siswaId, tanggal: date, status, kelas: viewKelas,
+        mapel: mapelGuru, tahun: ctx.activeTahun, semester: ctx.activeSemester
+      });
+    }
+  };
+
+  const handleHadirSemua = async () => {
+    if (students.length === 0) return showToast("Belum ada data siswa", "error");
+    const promises = students.map(s => {
+      const existing = attendance.find(a => a.siswaId === s.id && a.tanggal === date);
+      if (existing) {
+        if (existing.status !== 'Hadir') return setDoc(doc(db, 'users', ctx.dbId, 'attendance_mapel', existing.id), { status: 'Hadir' }, { merge: true });
+        return Promise.resolve();
+      }
+      return setDoc(doc(db, 'users', ctx.dbId, 'attendance_mapel', generateId()), {
+        siswaId: s.id, tanggal: date, status: 'Hadir', kelas: viewKelas,
+        mapel: mapelGuru, tahun: ctx.activeTahun, semester: ctx.activeSemester
+      });
+    });
+    try {
+      await Promise.all(promises);
+      showToast("Semua siswa ditandai Hadir hari ini");
+    } catch(err) { showToast("Terjadi kesalahan saat update massal", "error"); }
+  };
+
+  const handleBatalHadirSemua = async () => {
+    const toDelete = attendance.filter(a => a.tanggal === date);
+    try {
+      await Promise.all(toDelete.map(a => deleteDoc(doc(db, 'users', ctx.dbId, 'attendance_mapel', a.id))));
+      showToast("Presensi hari ini berhasil direset");
+    } catch(err) { showToast("Gagal mereset presensi", "error"); }
+  };
 
   const getLastWorkdayOfMonth = (year, month) => {
     let d = new Date(year, month, 0);
@@ -5073,14 +5432,31 @@ const AttendanceSectionGuruMapel = ({ allStudentsByKelas, allAttendanceByKelas, 
     return d;
   };
 
-  const handleDownloadPDF = async () => {
+  const buildSignatureBlock = (docPDF, kota, tanggalTTD, namaKepala, nipKepala, namaGuru, nipGuru, startY) => {
+    const pageW = docPDF.internal.pageSize.getWidth();
+    const left = 14; const rightX = pageW / 2 + 10;
+    docPDF.setFontSize(10);
+    docPDF.text('Mengetahui,', left + 20, startY, { align: 'center' });
+    docPDF.text('Kepala Sekolah', left + 20, startY + 5, { align: 'center' });
+    docPDF.text(`${kota}, ${tanggalTTD}`, rightX + 20, startY, { align: 'center' });
+    docPDF.text(`Guru ${mapelGuru}`, rightX + 20, startY + 5, { align: 'center' });
+    docPDF.text(namaKepala, left + 20, startY + 28, { align: 'center' });
+    docPDF.setDrawColor(0);
+    docPDF.line(left, startY + 29, left + 40, startY + 29);
+    docPDF.text(`NIP. ${nipKepala}`, left + 20, startY + 33, { align: 'center' });
+    docPDF.text(namaGuru, rightX + 20, startY + 28, { align: 'center' });
+    docPDF.line(rightX, startY + 29, rightX + 40, startY + 29);
+    docPDF.text(`NIP. ${nipGuru}`, rightX + 20, startY + 33, { align: 'center' });
+  };
+
+  const handleExport = async () => {
     const year = parseInt(exportYear);
     const month = parseInt(exportMonth);
     const dataBulan = attendance.filter(a => {
       const [y, m] = a.tanggal.split('-').map(Number);
       return y === year && m === month;
     });
-    if (dataBulan.length === 0) return showToast("Tidak ada data absensi di bulan & kelas ini", "error");
+    if (dataBulan.length === 0) return showToast("Tidak ada data absensi di bulan ini", "error");
 
     const uniqueDates = [...new Set(dataBulan.map(a => a.tanggal))].sort();
     const bulanNama = new Date(year, month - 1, 1).toLocaleString('id-ID', { month: 'long' });
@@ -5088,23 +5464,22 @@ const AttendanceSectionGuruMapel = ({ allStudentsByKelas, allAttendanceByKelas, 
     const tanggalTTD = lastWorkday.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     const kota = settings.kotaTandatangan || '___________';
     const namaKepala = profile.namaKepalaSekolah || '___________________________';
-    const nipKepala = profile.nipKepalaSekolah || '___________________________';
-    const namaGuru = profile.nama || '___________________________';
-    const nipGuru = profile.nip || '___________________________';
+    const nipKepala  = profile.nipKepalaSekolah  || '___________________________';
+    const namaGuru   = profile.nama || '___________________________';
+    const nipGuru    = profile.nip  || '___________________________';
     const namaSekolah = settings.namaSekolah || 'SD NEGERI NUSANTARA';
 
     try {
       const JsPDF = await loadJsPDF();
       await loadAutoTable();
-      const doc = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      const pageW = doc.internal.pageSize.getWidth();
-
-      doc.setFontSize(13); doc.setFont(undefined, 'bold');
-      doc.text(namaSekolah, pageW / 2, 14, { align: 'center' });
-      doc.setFontSize(11);
-      doc.text('REKAP ABSENSI SISWA', pageW / 2, 20, { align: 'center' });
-      doc.setFont(undefined, 'normal'); doc.setFontSize(9);
-      doc.text(`${viewKelas}  |  Bulan: ${bulanNama} ${year}  |  Semester: ${ctx.activeSemester} (${ctx.activeTahun})`, pageW / 2, 26, { align: 'center' });
+      const docPDF = new JsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pageW = docPDF.internal.pageSize.getWidth();
+      docPDF.setFontSize(13); docPDF.setFont(undefined, 'bold');
+      docPDF.text(namaSekolah, pageW / 2, 14, { align: 'center' });
+      docPDF.setFontSize(11);
+      docPDF.text('REKAP ABSENSI SISWA', pageW / 2, 20, { align: 'center' });
+      docPDF.setFont(undefined, 'normal'); docPDF.setFontSize(9);
+      docPDF.text(`${viewKelas}  |  Mapel: ${mapelGuru}  |  Bulan: ${bulanNama} ${year}  |  Semester: ${ctx.activeSemester} (${ctx.activeTahun})`, pageW / 2, 26, { align: 'center' });
 
       const head = [['No', 'Nama Siswa', ...uniqueDates.map(d => d.substring(8,10)), 'H', 'I', 'S', 'A']];
       const body = students.map((s, idx) => {
@@ -5112,13 +5487,13 @@ const AttendanceSectionGuruMapel = ({ allStudentsByKelas, allAttendanceByKelas, 
         const cells = uniqueDates.map(d => {
           const att = dataBulan.find(x => x.siswaId === s.id && x.tanggal === d);
           const st = att ? att.status : '';
-          if(st==='Hadir') h++; if(st==='Izin') i++; if(st==='Sakit') sk++; if(st==='Alpha') a++;
+          if(st==='Hadir')h++; if(st==='Izin')i++; if(st==='Sakit')sk++; if(st==='Alpha')a++;
           return st==='Hadir'?'H':st==='Sakit'?'S':st==='Izin'?'I':st==='Alpha'?'A':'';
         });
         return [idx+1, s.nama, ...cells, h, i, sk, a];
       });
 
-      doc.autoTable({
+      docPDF.autoTable({
         head, body, startY: 30,
         styles: { fontSize: 7, cellPadding: 1.5, halign: 'center' },
         columnStyles: { 1: { halign: 'left', cellWidth: 40 } },
@@ -5127,118 +5502,285 @@ const AttendanceSectionGuruMapel = ({ allStudentsByKelas, allAttendanceByKelas, 
         margin: { left: 10, right: 10 },
       });
 
-      const finalY = doc.lastAutoTable.finalY + 5;
-      doc.setFontSize(8);
-      doc.text('Keterangan: H=Hadir, I=Izin, S=Sakit, A=Alpha', 14, finalY);
-
-      // Blok tanda tangan — menggunakan nama guru MAPEL bersangkutan
+      const finalY = docPDF.lastAutoTable.finalY + 5;
+      docPDF.setFontSize(8);
+      docPDF.text('Keterangan: H=Hadir, I=Izin, S=Sakit, A=Alpha', 14, finalY);
       const sigY = finalY + 8;
-      const left = 14; const rightX = pageW / 2 + 10;
-      doc.setFontSize(10);
-      doc.text('Mengetahui,', left + 20, sigY, { align: 'center' });
-      doc.text('Kepala Sekolah', left + 20, sigY + 5, { align: 'center' });
-      doc.text(`${kota}, ${tanggalTTD}`, rightX + 20, sigY, { align: 'center' });
-      doc.text(`Guru ${mapelGuru}`, rightX + 20, sigY + 5, { align: 'center' });
-      doc.text(namaKepala, left + 20, sigY + 28, { align: 'center' });
-      doc.setDrawColor(0);
-      doc.line(left, sigY + 29, left + 40, sigY + 29);
-      doc.text(`NIP. ${nipKepala}`, left + 20, sigY + 33, { align: 'center' });
-      doc.text(namaGuru, rightX + 20, sigY + 28, { align: 'center' });
-      doc.line(rightX, sigY + 29, rightX + 40, sigY + 29);
-      doc.text(`NIP. ${nipGuru}`, rightX + 20, sigY + 33, { align: 'center' });
+      const needNewPage = sigY + 38 > docPDF.internal.pageSize.getHeight();
+      if (needNewPage) docPDF.addPage();
+      buildSignatureBlock(docPDF, kota, tanggalTTD, namaKepala, nipKepala, namaGuru, nipGuru, needNewPage ? 20 : sigY);
+      docPDF.save(`Rekap_Absensi_${mapelGuru.replace(/\s/g,'_')}_${viewKelas.replace(' ','_')}_${bulanNama}_${year}.pdf`);
+      showToast(`PDF Rekap Absensi ${bulanNama} ${year} berhasil diunduh!`, "success");
+    } catch(err) { showToast("Gagal membuat PDF: " + err.message, "error"); }
+  };
 
-      doc.save(`Rekap_Absensi_${viewKelas.replace(' ','_')}_${mapelGuru.replace(/\s/g,'_')}_${bulanNama}_${year}.pdf`);
-      showToast(`PDF Rekap Absensi ${viewKelas} ${bulanNama} ${year} berhasil diunduh!`, "success");
-    } catch(err) {
-      console.error(err);
-      showToast("Gagal membuat PDF: " + err.message, "error");
-    }
+  const handleExportSemester = async () => {
+    const semesterMonths = ctx.activeSemester === 'Ganjil' ? [7,8,9,10,11,12] : [1,2,3,4,5,6];
+    const tahunParts = ctx.activeTahun.split('/');
+    const yearForMonth = ctx.activeSemester === 'Ganjil' ? parseInt(tahunParts[0]) : parseInt(tahunParts[1]);
+    const dataSemester = attendance.filter(a => {
+      const [y, m] = a.tanggal.split('-').map(Number);
+      return y === yearForMonth && semesterMonths.includes(m);
+    });
+    if (dataSemester.length === 0) return showToast("Tidak ada data absensi semester ini", "error");
+    const activeMonths = semesterMonths.filter(m => dataSemester.some(a => parseInt(a.tanggal.split('-')[1]) === m));
+    const row1 = ['No', 'Nama Siswa'];
+    const row2 = ['', ''];
+    activeMonths.forEach(m => {
+      const nama = new Date(yearForMonth, m-1, 1).toLocaleString('id-ID', { month: 'long' });
+      row1.push(nama, '', '', ''); row2.push('H', 'S', 'I', 'A');
+    });
+    row1.push('Total H', 'Total S', 'Total I', 'Total A');
+    row2.push('', '', '', '');
+    const dataRows = students.map((s, idx) => {
+      const row = [idx + 1, s.nama];
+      let totalH=0, totalS=0, totalI=0, totalA=0;
+      activeMonths.forEach(m => {
+        const dataBulan = dataSemester.filter(a => parseInt(a.tanggal.split('-')[1]) === m);
+        let h=0, sk=0, i=0, a=0;
+        dataBulan.forEach(att => {
+          if (att.siswaId !== s.id) return;
+          if(att.status==='Hadir')h++; else if(att.status==='Sakit')sk++;
+          else if(att.status==='Izin')i++; else if(att.status==='Alpha')a++;
+        });
+        row.push(h, sk, i, a);
+        totalH+=h; totalS+=sk; totalI+=i; totalA+=a;
+      });
+      row.push(totalH, totalS, totalI, totalA);
+      return row;
+    });
+    try {
+      const XLSX = await loadXLSX();
+      const sheetData = [
+        [`REKAP ABSENSI ${mapelGuru.toUpperCase()} SEMESTER ${ctx.activeSemester.toUpperCase()} - ${viewKelas} - ${ctx.activeTahun}`],
+        row1, row2, ...dataRows, [], ['Keterangan: H=Hadir, S=Sakit, I=Izin, A=Alpha'],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(sheetData);
+      const merges = [];
+      let col = 2;
+      activeMonths.forEach(() => { merges.push({ s:{r:1,c:col}, e:{r:1,c:col+3} }); col+=4; });
+      merges.push({s:{r:1,c:0},e:{r:2,c:0}}); merges.push({s:{r:1,c:1},e:{r:2,c:1}});
+      ws['!merges'] = merges;
+      const wscols = [{wch:5},{wch:28}];
+      activeMonths.forEach(() => { [6,5,5,5].forEach(w => wscols.push({wch:w})); });
+      [8,8,8,8].forEach(w => wscols.push({wch:w}));
+      ws['!cols'] = wscols;
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, `Sem ${ctx.activeSemester}`);
+      XLSX.writeFile(wb, `Rekap_Absensi_${mapelGuru.replace(/\s/g,'_')}_Sem${ctx.activeSemester}_${viewKelas.replace(' ','_')}_${ctx.activeTahun.replace('/','_')}.xlsx`);
+      showToast(`Rekap Semester ${ctx.activeSemester} berhasil diunduh!`, "success");
+    } catch(err) { showToast("Gagal membuat file Excel: " + err.message, "error"); }
+  };
+
+  // Banner kalender — pakai helper getStatusTanggal yang sudah ada di app (atau fallback lokal)
+  const getStatusTgl = (tgl) => {
+    if (!tgl) return { status: 'unknown' };
+    const { hariMerah = {}, hariFakultatif = {}, awal = '', akhir = '' } = kalenderData || {};
+    const dow = new Date(tgl + 'T00:00:00').getDay();
+    if (dow === 0) return { status: 'minggu' };
+    if (awal && akhir && (tgl < awal || tgl > akhir)) return { status: 'luar_rentang' };
+    if (hariMerah[tgl]) return { status: 'libur', label: hariMerah[tgl] };
+    if (hariFakultatif[tgl]) return { status: 'fakultatif', label: hariFakultatif[tgl] };
+    return { status: 'efektif' };
+  };
+
+  const statusTgl = getStatusTgl(date);
+  const BLOCKED_STATUSES_LOCAL = ['minggu', 'libur', 'luar_rentang'];
+  const isBlocked = BLOCKED_STATUSES_LOCAL.includes(statusTgl.status);
+
+  const BANNER = {
+    minggu:       { bg:'bg-blue-50 border-blue-200',   icon:'🔵', txt:'text-blue-800',   msg:'Hari Minggu — absensi tidak tersedia' },
+    libur:        { bg:'bg-red-50 border-red-200',     icon:'🔴', txt:'text-red-800',    msg:`Hari Libur: ${statusTgl.label} — absensi tidak tersedia` },
+    luar_rentang: { bg:'bg-slate-50 border-slate-300', icon:'⚫', txt:'text-slate-600',  msg:'Tanggal di luar rentang semester aktif — absensi tidak tersedia' },
+    fakultatif:   { bg:'bg-amber-50 border-amber-200', icon:'🟡', txt:'text-amber-800',  msg:`Efektif Fakultatif: ${statusTgl.label}` },
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="rounded-2xl p-3 md:p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
-        <div>
-          <h2 className="text-base font-black text-white">Absensi Siswa</h2>
-          <p className="text-purple-200 text-xs mt-0.5">Data dari guru kelas · Mode lihat saja</p>
+    <div className="max-w-5xl mx-auto space-y-4 animate-fade-in">
+
+      {/* ── HEADER — identik guru kelas + selector kelas ── */}
+      <div className="rounded-2xl p-3 md:p-4 flex flex-col gap-3" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
+        {/* Baris 1: Judul + selector kelas + tombol aksi */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div>
+            <h2 className="text-base font-black text-white">Presensi {mapelGuru} — {viewKelas}</h2>
+            <p className="text-purple-200 text-xs mt-0.5">Kehadiran per jam pelajaran · {ctx.activeSemester}</p>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <select value={viewKelas} onChange={e => setViewKelas(e.target.value)}
+              className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
+              {KELAS_OPTIONS.map(k => <option key={k} value={k} style={{background:'#5b21b6'}}>{k}</option>)}
+            </select>
+            <button onClick={handleHadirSemua}
+              className="flex items-center gap-1 bg-emerald-400 text-white px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-emerald-500 transition shadow-sm">
+              <CheckSquare size={12}/> Hadir Semua
+            </button>
+            <button onClick={handleBatalHadirSemua}
+              className="flex items-center gap-1 bg-white/20 border border-white/30 text-white px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-white/30 transition">
+              <X size={12}/> Batalkan
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <select value={viewKelas} onChange={e => setViewKelas(e.target.value)} className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
-            {KELAS_OPTIONS.map(k => <option key={k} value={k} style={{background:'#5b21b6'}}>{k}</option>)}
+        {/* Baris 2: Export controls */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <select value={exportMonth} onChange={e => setExportMonth(e.target.value)}
+            className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
+            {Array.from({length:12},(_,i)=>{const m=(i+1).toString().padStart(2,'0'); return <option key={m} value={m} style={{background:'#5b21b6'}}>{new Date(2000,i,1).toLocaleString('id-ID',{month:'long'})}</option>;})}
           </select>
-          <select value={exportMonth} onChange={e => setExportMonth(e.target.value)} className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
-            {Array.from({length: 12}, (_, i) => {
-              const m = (i+1).toString().padStart(2,'0');
-              return <option key={m} value={m} style={{background:'#5b21b6'}}>{new Date(2000,i,1).toLocaleString('id-ID',{month:'long'})}</option>;
-            })}
-          </select>
-          <select value={exportYear} onChange={e => setExportYear(e.target.value)} className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
+          <select value={exportYear} onChange={e => setExportYear(e.target.value)}
+            className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
             {[2025,2026,2027,2028,2029,2030,2031].map(y => <option key={y} value={y} style={{background:'#5b21b6'}}>{y}</option>)}
           </select>
-          <button onClick={handleDownloadPDF} className="flex items-center gap-1.5 bg-white text-purple-800 px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-purple-50 transition shadow-sm">
-            <Download size={13}/> PDF
+          <button onClick={handleExport}
+            className="flex items-center gap-1 bg-white text-purple-800 px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-purple-50 transition shadow-sm">
+            <Download size={12}/> PDF
+          </button>
+          <button onClick={handleExportSemester}
+            className="flex items-center gap-1 bg-white/20 border border-white/30 text-white px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-white/30 transition">
+            <Download size={12}/> XLSX
           </button>
         </div>
       </div>
 
-      {/* Info banner */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-center gap-3">
-        <AlertCircle size={16} className="text-blue-400 shrink-0" />
-        <p className="text-xs text-blue-700 font-medium">Data absensi diinput oleh masing-masing guru kelas. Anda hanya dapat melihat dan mengunduh laporan.</p>
+      {/* ── Pilih tanggal ── */}
+      <div className="bg-white rounded-2xl px-4 py-2.5 border border-purple-100 flex items-center justify-between shadow-sm">
+        <p className="text-xs font-bold text-slate-500">📅 Tanggal Presensi</p>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          className="bg-purple-50 border border-purple-200 text-purple-900 px-3 py-1.5 rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-purple-400" />
       </div>
 
-      {/* Rekap summary hari ini */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {['Hadir','Sakit','Izin','Alpha'].map(st => {
-          const count = todayAtt.filter(a => a.status === st).length;
-          const colors = { Hadir:'emerald', Sakit:'blue', Izin:'amber', Alpha:'rose' };
-          const c = colors[st];
-          return (
-            <div key={st} className={`bg-${c}-50 border border-${c}-100 p-4 rounded-xl`}>
-              <p className="text-[10px] font-bold uppercase text-slate-500 mb-1">{st} Hari Ini</p>
-              <p className={`text-2xl font-black text-${c}-700`}>{count}</p>
-            </div>
-          );
-        })}
-      </div>
+      {/* ── Banner status kalender — identik guru kelas ── */}
+      {statusTgl.status !== 'efektif' && (() => {
+        const b = BANNER[statusTgl.status] || BANNER.luar_rentang;
+        return (
+          <div className={`rounded-xl border px-4 py-3 flex items-center gap-2.5 ${b.bg}`}>
+            <span className="text-base">{b.icon}</span>
+            <p className={`text-xs font-bold ${b.txt}`}>{b.msg}</p>
+          </div>
+        );
+      })()}
 
-      {/* Tabel absensi hari ini — view only */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-black text-slate-800">{viewKelas} — Absensi Hari Ini</h3>
-          <span className="text-xs text-slate-400 font-medium">{today}</span>
-        </div>
+      {/* ── Tabel absensi — identik guru kelas, diblokir saat libur ── */}
+      <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden ${isBlocked ? 'opacity-50 pointer-events-none select-none' : ''}`}>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
-                <th className="p-4 font-bold w-12 text-center">No</th>
-                <th className="p-4 font-bold">Nama Lengkap</th>
-                <th className="p-4 font-bold text-center">Status</th>
+              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs">
+                <th className="p-2 font-bold w-8 text-center">No</th>
+                <th className="p-2 font-bold">Nama Lengkap</th>
+                <th className="p-2 font-bold text-center">Status Kehadiran</th>
               </tr>
             </thead>
             <tbody>
-              {students.length === 0 ? (
-                <tr><td colSpan="3" className="p-8 text-center text-slate-400 font-medium">Belum ada data siswa di kelas ini.</td></tr>
-              ) : students.map((s, idx) => {
-                const att = todayAtt.find(a => a.siswaId === s.id);
-                const st = att ? att.status : '-';
-                const stColor = st==='Hadir'?'emerald':st==='Sakit'?'blue':st==='Izin'?'amber':st==='Alpha'?'rose':'slate';
+              {students.map((s, idx) => {
+                const att = attendance.find(a => a.siswaId === s.id && a.tanggal === date);
+                const currentStatus = att ? att.status : '';
                 return (
                   <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                    <td className="p-4 text-center font-bold text-slate-400">{idx+1}</td>
-                    <td className="p-4 font-bold text-slate-800">{s.nama}</td>
-                    <td className="p-4 text-center">
-                      <span className={`px-3 py-1 rounded-lg text-xs font-bold bg-${stColor}-100 text-${stColor}-700`}>{st}</span>
+                    <td className="p-2 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
+                    <td className="p-2 font-bold text-slate-800 text-xs">{s.nama}</td>
+                    <td className="p-2">
+                      <div className="flex justify-center gap-1.5">
+                        {['Hadir', 'Sakit', 'Izin', 'Alpha'].map(st => (
+                          <button key={st}
+                            disabled={isBlocked}
+                            onClick={() => !isBlocked && handleStatusChange(s.id, st)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition min-w-[52px] ${
+                              currentStatus === st
+                                ? st==='Hadir' ? 'bg-emerald-500 text-white'
+                                  : st==='Sakit' ? 'bg-blue-500 text-white'
+                                  : st==='Izin'  ? 'bg-amber-500 text-white'
+                                  : 'bg-red-500 text-white'
+                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}>
+                            {st}
+                          </button>
+                        ))}
+                      </div>
                     </td>
                   </tr>
                 );
               })}
+              {students.length === 0 && (
+                <tr><td colSpan="3" className="p-4 text-center text-slate-400 text-xs">Belum ada siswa di kelas ini.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* ── REKAP ABSENSI PER SISWA — identik guru kelas ── */}
+      {students.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
+            <CalendarCheck size={15} className="text-purple-600"/>
+            <h3 className="font-black text-slate-800 text-sm">Rekap Absensi</h3>
+            <span className="text-xs text-slate-400 font-medium ml-1">— Total kehadiran {viewKelas} · {mapelGuru}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-slate-800 text-slate-100">
+                  <th className="p-2 font-bold border-r border-slate-700 w-6 text-center">No</th>
+                  <th className="p-2 font-bold border-r border-slate-700">Nama</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-emerald-900 w-10">H</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-blue-900 w-10">S</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-amber-900 w-10">I</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 bg-red-900 w-10">A</th>
+                  <th className="p-2 font-bold text-center border-r border-slate-700 w-12">Hari</th>
+                  <th className="p-2 font-bold text-center w-12">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s, idx) => {
+                  const hadir = attendance.filter(a => a.siswaId === s.id && a.status === 'Hadir').length;
+                  const sakit = attendance.filter(a => a.siswaId === s.id && a.status === 'Sakit').length;
+                  const izin  = attendance.filter(a => a.siswaId === s.id && a.status === 'Izin').length;
+                  const alpha = attendance.filter(a => a.siswaId === s.id && a.status === 'Alpha').length;
+                  const jumlahHari = hadir + sakit + izin + alpha;
+                  const hasData = jumlahHari > 0;
+                  const persen = hasData ? Math.round((hadir / jumlahHari) * 100) : null;
+                  const pColor = persen === null ? '' : persen >= 80 ? 'text-emerald-600' : persen >= 60 ? 'text-amber-600' : 'text-red-600';
+                  return (
+                    <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                      <td className="p-2 text-center font-bold text-slate-400 border-r border-slate-100">{idx+1}</td>
+                      <td className="p-2 font-semibold text-slate-800 border-r border-slate-100" style={{wordBreak:'break-word',minWidth:'100px'}}>{s.nama}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-emerald-50/30 font-black text-emerald-600">{hasData ? hadir : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-blue-50/20 font-black text-blue-600">{hasData ? sakit : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-amber-50/20 font-black text-amber-600">{hasData ? izin : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 bg-red-50/20 font-black text-red-600">{hasData ? alpha : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center border-r border-slate-100 font-black text-slate-700">{hasData ? jumlahHari : <span className="text-slate-300">—</span>}</td>
+                      <td className="p-2 text-center">
+                        {persen !== null ? <span className={`font-black ${pColor}`}>{persen}%</span> : <span className="text-slate-300">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {/* Baris Total */}
+                {(() => {
+                  const tH = attendance.filter(a => a.status === 'Hadir').length;
+                  const tS = attendance.filter(a => a.status === 'Sakit').length;
+                  const tI = attendance.filter(a => a.status === 'Izin').length;
+                  const tA = attendance.filter(a => a.status === 'Alpha').length;
+                  const tJml = tH + tS + tI + tA;
+                  const tPersen = tJml > 0 ? Math.round((tH / tJml) * 100) : null;
+                  return (
+                    <tr className="bg-slate-100 border-t-2 border-slate-300 font-black">
+                      <td colSpan={2} className="p-2 text-slate-700 border-r border-slate-300 text-right pr-3">Total</td>
+                      <td className="p-2 text-center text-emerald-700 border-r border-slate-300 bg-emerald-100">{tH}</td>
+                      <td className="p-2 text-center text-blue-700 border-r border-slate-300 bg-blue-100">{tS}</td>
+                      <td className="p-2 text-center text-amber-700 border-r border-slate-300 bg-amber-100">{tI}</td>
+                      <td className="p-2 text-center text-red-700 border-r border-slate-300 bg-red-100">{tA}</td>
+                      <td className="p-2 text-center text-slate-700 border-r border-slate-300">{tJml}</td>
+                      <td className="p-2 text-center text-slate-700">{tPersen !== null ? `${tPersen}%` : '—'}</td>
+                    </tr>
+                  );
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -5267,22 +5809,22 @@ const StudentSectionGuruMapel = ({ allStudentsByKelas, ctx }) => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
-                <th className="p-4 font-bold w-12 text-center">No</th>
-                <th className="p-4 font-bold">Nama Lengkap</th>
-                <th className="p-4 font-bold">NIS / NISN</th>
-                <th className="p-4 font-bold text-center">L/P</th>
+              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 text-xs">
+                <th className="p-2 font-bold w-8 text-center">No</th>
+                <th className="p-2 font-bold">Nama Lengkap</th>
+                <th className="p-2 font-bold">NIS / NISN</th>
+                <th className="p-2 font-bold text-center">L/P</th>
               </tr>
             </thead>
             <tbody>
               {siswaTampil.length === 0 ? (
-                <tr><td colSpan="4" className="p-8 text-center text-slate-400">Belum ada data siswa di kelas ini.</td></tr>
+                <tr><td colSpan="4" className="p-4 text-center text-slate-400 text-xs">Belum ada data siswa di kelas ini.</td></tr>
               ) : siswaTampil.map((s,idx) => (
                 <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                  <td className="p-4 text-center font-bold text-slate-400">{idx+1}</td>
-                  <td className="p-4 font-bold text-slate-800">{s.nama}</td>
-                  <td className="p-4 text-slate-600 text-sm">{s.nis||'-'} / {s.nisn||'-'}</td>
-                  <td className="p-4 text-center"><span className={`px-2 py-1 rounded-md text-xs font-bold ${s.jk==='L'?'bg-blue-50 text-blue-600':'bg-pink-50 text-pink-600'}`}>{s.jk}</span></td>
+                  <td className="p-2 text-center font-bold text-slate-400 text-xs">{idx+1}</td>
+                  <td className="p-2 font-bold text-slate-800 text-xs">{s.nama}</td>
+                  <td className="p-2 text-slate-500 text-xs">{s.nis||'-'} / {s.nisn||'-'}</td>
+                  <td className="p-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${s.jk==='L'?'bg-blue-50 text-blue-600':'bg-pink-50 text-pink-600'}`}>{s.jk}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -5648,107 +6190,354 @@ const JournalSectionGuruMapel = ({ journals, allStudentsByKelas, allAttendanceBy
 };
 
 // ==========================================
-// GURU MAPEL — REKAP NILAI (per kelas 1-6)
+// GURU MAPEL — REKAP NILAI LENGKAP (setara guru kelas)
+// Tab: Sumatif | Formatif TP | Kokurikuler
 // ==========================================
 const GradesSectionGuruMapel = ({ allStudentsByKelas, grades, ctx, showToast, mapelGuru }) => {
   const [kelasAktif, setKelasAktif] = useState(KELAS_OPTIONS[0]);
+  const [activeTab, setActiveTab] = useState('sumatif'); // 'sumatif' | 'formatif' | 'kokurikuler'
+  const [tpList, setTpList] = useState([]);
+  const [nilaiSettings, setNilaiSettings] = useState({ jumlahS: 4, bobotS: 70, bobotSAS: 30 });
+  const [showTpModal, setShowTpModal] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [tpForm, setTpForm] = useState({ deskripsi: '' });
+  const [tpEditId, setTpEditId] = useState(null);
+
+  // Key unik per mapel + kelas agar tidak tabrakan
+  const settingsKey = `${mapelGuru.replace(/\s/g,'_')}_${kelasAktif.replace(' ','_')}`;
+
+  React.useEffect(() => {
+    if (!ctx.dbId) return;
+    const unsub1 = onSnapshot(doc(db,'users',ctx.dbId,'data',`tpSettings_mapel_${settingsKey}`), snap => {
+      setTpList(snap.exists() ? (snap.data().list||[]) : []);
+    });
+    const unsub2 = onSnapshot(doc(db,'users',ctx.dbId,'data',`nilaiSettings_mapel_${settingsKey}`), snap => {
+      setNilaiSettings(snap.exists()
+        ? { jumlahS: snap.data().jumlahS??4, bobotS: snap.data().bobotS??70, bobotSAS: snap.data().bobotSAS??30 }
+        : { jumlahS:4, bobotS:70, bobotSAS:30 });
+    });
+    return () => { unsub1(); unsub2(); };
+  }, [ctx.dbId, settingsKey]);
 
   const students = (allStudentsByKelas[kelasAktif]||[])
     .filter(s=>s.tahun===ctx.activeTahun)
     .sort((a,b)=>a.nama.localeCompare(b.nama));
 
+  // Grades: difilter per kelas DAN mapel agar tidak tabrakan dengan guru kelas
+  const kelasGrades = grades.filter(g => g.kelas === kelasAktif && g.mapel === mapelGuru);
+  const kelasFormatif = grades.filter(g => g.kelas === kelasAktif && g.mapel === `__formatif__mapel__${mapelGuru}`);
+
+  const saveNilaiSettings = async (ns) => {
+    setNilaiSettings(ns);
+    await setDoc(doc(db,'users',ctx.dbId,'data',`nilaiSettings_mapel_${settingsKey}`), ns, {merge:true});
+  };
+  const saveTpList = async (list) => {
+    setTpList(list);
+    await setDoc(doc(db,'users',ctx.dbId,'data',`tpSettings_mapel_${settingsKey}`), {list});
+  };
+  const handleTpSave = async () => {
+    if (!tpForm.deskripsi.trim()) return showToast('Deskripsi TP wajib diisi','error');
+    const newList = tpEditId
+      ? tpList.map(tp => tp.id===tpEditId ? {...tp, deskripsi:tpForm.deskripsi.trim()} : tp)
+      : [...tpList, {id:'tp_'+generateId(), deskripsi:tpForm.deskripsi.trim()}];
+    await saveTpList(newList);
+    setShowTpModal(false); setTpForm({deskripsi:''}); setTpEditId(null);
+    showToast(tpEditId ? 'TP diperbarui' : 'TP ditambahkan');
+  };
+  const handleTpDelete = async (id) => { await saveTpList(tpList.filter(tp=>tp.id!==id)); showToast('TP dihapus'); };
+
   const handleGradeChange = async (siswaId, field, value) => {
-    let existing = grades.find(g=>g.siswaId===siswaId && g.kelas===kelasAktif);
+    const existing = kelasGrades.find(g=>g.siswaId===siswaId);
     if (existing) {
       await setDoc(doc(db,'users',ctx.dbId,'grades',existing.id),{[field]:value},{merge:true});
     } else {
       await setDoc(doc(db,'users',ctx.dbId,'grades',generateId()),{
-        siswaId, mapel: mapelGuru, kelas: kelasAktif,
-        tahun: ctx.activeTahun, semester: ctx.activeSemester, [field]:value
+        siswaId, mapel:mapelGuru, kelas:kelasAktif,
+        tahun:ctx.activeTahun, semester:ctx.activeSemester, [field]:value
       });
     }
   };
 
-  const handleExportGrades = () => {
-    if (students.length===0) return showToast("Tidak ada data siswa","error");
-    const exportData = students.map((s,idx)=>{
-      const g=grades.find(gd=>gd.siswaId===s.id&&gd.kelas===kelasAktif)||{};
-      let sum=0,cnt=0;
-      [1,2,3,4,5].forEach(n=>{if(g[`s${n}`]){sum+=Number(g[`s${n}`]);cnt++;}});
-      const avg=cnt>0?sum/cnt:0; const akhir=Number(g.akhir||0);
-      let final=0;
-      if(avg>0&&akhir>0)final=Math.round((avg+akhir)/2);else if(avg>0)final=Math.round(avg);else if(akhir>0)final=akhir;
-      return {"No":idx+1,"Nama":s.nama,"S1":g.s1||'',"S2":g.s2||'',"S3":g.s3||'',"S4":g.s4||'',"S5":g.s5||'',"Asesmen Akhir":g.akhir||'',"Nilai Akhir":final||''};
-    });
-    exportToExcel(exportData,`Rekap_Nilai_${mapelGuru.replace(/\s/g,'_')}_${kelasAktif.replace(' ','_')}`,showToast);
+  const handleFormatifChange = async (siswaId, tpId, value) => {
+    const mapelKey = `__formatif__mapel__${mapelGuru}`;
+    const existing = kelasFormatif.find(g=>g.siswaId===siswaId);
+    if (existing) {
+      await setDoc(doc(db,'users',ctx.dbId,'grades',existing.id),{[`tp_${tpId}`]:value},{merge:true});
+    } else {
+      await setDoc(doc(db,'users',ctx.dbId,'grades',generateId()),{
+        siswaId, mapel:mapelKey, kelas:kelasAktif,
+        tahun:ctx.activeTahun, semester:ctx.activeSemester, [`tp_${tpId}`]:value
+      });
+    }
   };
+
+  const {jumlahS, bobotS, bobotSAS} = nilaiSettings;
+  const sNums = Array.from({length:jumlahS},(_,i)=>i+1);
+
+  const hitungNilaiAkhir = (g) => {
+    let sumS=0, cntS=0;
+    for (let n=1; n<=jumlahS; n++) { if(g[`s${n}`]){sumS+=Number(g[`s${n}`]);cntS++;} }
+    const avgS = cntS>0 ? sumS/cntS : 0;
+    const sas  = Number(g.sas||0);
+    if (avgS===0 && sas===0) return null;
+    if (sas===0) return Math.round(avgS);
+    return Math.round(avgS*(bobotS/100) + sas*(bobotSAS/100));
+  };
+
+  const generateDeskFormatif = (nilaiPerTP) => {
+    const filled = tpList.filter(tp => nilaiPerTP[`tp_${tp.id}`]);
+    if (!filled.length) return '';
+    const sbList = tpList.filter(tp => nilaiPerTP[`tp_${tp.id}`]==='SB');
+    const mbList = tpList.filter(tp => nilaiPerTP[`tp_${tp.id}`]==='MB');
+    const bList  = tpList.filter(tp => nilaiPerTP[`tp_${tp.id}`]==='B');
+    if (sbList.length===filled.length) return sbList.map(tp=>tp.deskripsi).join(' ');
+    if (mbList.length===filled.length) return mbList.map(tp=>`Ananda masih perlu bimbingan: ${tp.deskripsi}`).join(' ');
+    const tertinggi = sbList.length>0?sbList:bList;
+    const parts = [];
+    if (tertinggi.length) parts.push(tertinggi.map(tp=>tp.deskripsi).join(' '));
+    if (mbList.length) parts.push(`Namun masih perlu bimbingan: ${mbList.map(tp=>tp.deskripsi).join(', ')}.`);
+    return parts.join(' ');
+  };
+
+  const handleExport = () => {
+    if (!students.length) return showToast('Tidak ada siswa','error');
+    const rows = students.map((s,i) => {
+      const g = kelasGrades.find(gd=>gd.siswaId===s.id)||{};
+      const row = {No:i+1, Nama:s.nama};
+      for (let n=1;n<=jumlahS;n++) row[`S${n}`]=g[`s${n}`]||'';
+      row['SAS']=g.sas||''; row['Nilai Akhir']=hitungNilaiAkhir(g)??'';
+      return row;
+    });
+    exportToExcel(rows,`Rekap_${mapelGuru.replace(/\s/g,'_')}_${kelasAktif.replace(' ','_')}_${ctx.activeSemester}`,showToast);
+  };
+
+  const TABS = [
+    { id:'sumatif',    label:'📊 Sumatif' },
+    { id:'formatif',   label:'📝 Formatif TP' },
+    { id:'kokurikuler',label:'🎯 Kokurikuler' },
+  ];
 
   return (
     <div className="max-w-7xl mx-auto space-y-4 animate-fade-in">
-      <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <div>
-          <h2 className="text-base font-black text-slate-800">Rekap Nilai {mapelGuru}</h2>
-          <p className="text-slate-500 text-xs mt-0.5">{ctx.activeSemester} · {ctx.activeTahun}</p>
+      {/* HEADER */}
+      <div className="rounded-2xl p-3 md:p-4 flex flex-col gap-2" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div>
+            <h2 className="text-base font-black text-white">Rekap Nilai {mapelGuru}</h2>
+            <p className="text-purple-200 text-xs mt-0.5">{ctx.activeSemester} · {ctx.activeTahun}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select value={kelasAktif} onChange={e=>{setKelasAktif(e.target.value);}} className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
+              {KELAS_OPTIONS.map(k=><option key={k} value={k} style={{background:'#5b21b6'}}>{k}</option>)}
+            </select>
+            {activeTab==='sumatif' && (
+              <>
+                <button onClick={()=>setShowSettingsPanel(p=>!p)} className="flex items-center gap-1 bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs hover:bg-white/30 transition">
+                  <Settings size={12}/> Pengaturan
+                </button>
+                <button onClick={handleExport} className="flex items-center gap-1 bg-white text-purple-800 px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-purple-50 transition shadow-sm">
+                  <Download size={12}/> Export XLSX
+                </button>
+              </>
+            )}
+            {activeTab==='formatif' && (
+              <button onClick={()=>setShowTpModal(true)} className="flex items-center gap-1 bg-white text-purple-800 px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-purple-50 transition shadow-sm">
+                🎯 Kelola TP
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select value={kelasAktif} onChange={e=>setKelasAktif(e.target.value)} className="bg-slate-50 border border-slate-200 text-slate-700 px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
-            {KELAS_OPTIONS.map(k=><option key={k} value={k}>{k}</option>)}
-          </select>
-          <button onClick={handleExportGrades} className="flex items-center gap-1.5 bg-purple-700 text-white px-3 py-1.5 rounded-xl font-bold text-xs hover:bg-purple-800 transition">
-            <Download size={13}/> Export .xlsx
-          </button>
+        {/* Tab navigator */}
+        <div className="flex gap-1 bg-white/10 p-1 rounded-xl w-fit">
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setActiveTab(t.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${activeTab===t.id?'bg-white text-purple-800 shadow-sm':'text-white/80 hover:text-white hover:bg-white/10'}`}>
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left whitespace-nowrap">
-            <thead>
-              <tr className="bg-slate-800 text-slate-100 text-xs">
-                <th rowSpan="2" className="p-2 font-bold border-r border-slate-700 w-8 text-center">No</th>
-                <th rowSpan="2" className="p-2 font-bold border-r border-slate-700 min-w-[160px]">Nama Lengkap</th>
-                <th colSpan="5" className="p-2 font-bold border-r border-slate-700 text-center bg-slate-700">Nilai Sumatif (S1–S5)</th>
-                <th rowSpan="2" className="p-2 font-bold border-r border-slate-700 text-center w-20 bg-purple-900 leading-tight text-[10px]">Asesmen<br/>Akhir</th>
-                <th rowSpan="2" className="p-2 font-bold text-center w-20 bg-emerald-900 leading-tight text-[10px]">Nilai Akhir</th>
-              </tr>
-              <tr className="bg-slate-50 text-slate-500 text-[10px] text-center border-b border-slate-200">
-                {[1,2,3,4,5].map(n=><th key={n} className="p-1.5 font-bold border-r border-slate-200 w-12">S{n}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s,idx)=>{
-                const g=grades.find(gd=>gd.siswaId===s.id&&gd.kelas===kelasAktif)||{};
-                let sum=0,cnt=0;
-                [1,2,3,4,5].forEach(n=>{if(g[`s${n}`]){sum+=Number(g[`s${n}`]);cnt++;}});
-                const avg=cnt>0?sum/cnt:0; const akhir=Number(g.akhir||0);
-                let final=0;
-                if(avg>0&&akhir>0)final=Math.round((avg+akhir)/2);else if(avg>0)final=Math.round(avg);else if(akhir>0)final=akhir;
-                const isRendah=final>0&&final<70;
-                return (
-                  <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
-                    <td className="p-1.5 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{idx+1}</td>
-                    <td className="p-1.5 font-bold text-slate-800 text-xs border-r border-slate-100 truncate max-w-[160px]">{s.nama}</td>
-                    {[1,2,3,4,5].map(n=>(
-                      <td key={n} className="p-1 border-r border-slate-100">
-                        <input type="number" min="0" max="100" value={g[`s${n}`]||''} onChange={e=>handleGradeChange(s.id,`s${n}`,e.target.value)} className="w-10 p-1 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold outline-none focus:ring-1 focus:ring-purple-500 focus:bg-white transition-all"/>
+
+      {/* Pengaturan bobot sumatif */}
+      {activeTab==='sumatif' && showSettingsPanel && (
+        <div className="bg-white p-4 rounded-2xl border border-purple-100 shadow-sm">
+          <h3 className="font-bold text-slate-700 text-sm mb-3 flex items-center gap-2"><Settings size={14} className="text-purple-600"/> Pengaturan Penilaian</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Jumlah Sumatif</label>
+              <select value={jumlahS} onChange={e=>saveNilaiSettings({...nilaiSettings,jumlahS:Number(e.target.value)})} className="w-full border border-slate-200 rounded-xl p-2 text-sm outline-none focus:ring-2 focus:ring-purple-400 bg-slate-50">
+                {[1,2,3,4,5,6,7,8].map(n=><option key={n} value={n}>S1–S{n}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Bobot Sumatif (%)</label>
+              <input type="number" min="0" max="100" value={bobotS} onChange={e=>saveNilaiSettings({...nilaiSettings,bobotS:Number(e.target.value)})} className="w-full border border-slate-200 rounded-xl p-2 text-sm outline-none focus:ring-2 focus:ring-purple-400 bg-slate-50"/>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Bobot SAS (%)</label>
+              <input type="number" min="0" max="100" value={bobotSAS} onChange={e=>saveNilaiSettings({...nilaiSettings,bobotSAS:Number(e.target.value)})} className="w-full border border-slate-200 rounded-xl p-2 text-sm outline-none focus:ring-2 focus:ring-purple-400 bg-slate-50"/>
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2">Nilai Akhir = (rata-rata S × {bobotS}%) + (SAS × {bobotSAS}%)</p>
+        </div>
+      )}
+
+      {/* ── TAB SUMATIF ── */}
+      {activeTab==='sumatif' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left whitespace-nowrap">
+              <thead>
+                <tr className="bg-slate-800 text-slate-100 text-xs">
+                  <th rowSpan="2" className="p-2 font-bold border-r border-slate-700 w-8 text-center">No</th>
+                  <th rowSpan="2" className="p-2 font-bold border-r border-slate-700 min-w-[160px]">Nama Lengkap</th>
+                  <th colSpan={jumlahS} className="p-2 font-bold border-r border-slate-700 text-center bg-slate-700">Nilai Sumatif</th>
+                  <th rowSpan="2" className="p-2 font-bold border-r border-slate-700 text-center w-16 bg-purple-900 leading-tight text-[10px]">SAS</th>
+                  <th rowSpan="2" className="p-2 font-bold text-center w-16 bg-emerald-900 leading-tight text-[10px]">Akhir</th>
+                </tr>
+                <tr className="bg-slate-50 text-slate-500 text-[10px] text-center border-b border-slate-200">
+                  {sNums.map(n=><th key={n} className="p-1.5 font-bold border-r border-slate-200 w-12">S{n}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s,idx)=>{
+                  const g = kelasGrades.find(gd=>gd.siswaId===s.id)||{};
+                  const final = hitungNilaiAkhir(g);
+                  const isRendah = final!==null && final<70;
+                  return (
+                    <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                      <td className="p-1.5 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{idx+1}</td>
+                      <td className="p-1.5 font-bold text-slate-800 text-xs border-r border-slate-100 truncate max-w-[160px]">{s.nama}</td>
+                      {sNums.map(n=>(
+                        <td key={n} className="p-1 border-r border-slate-100">
+                          <input type="number" min="0" max="100" value={g[`s${n}`]||''} onChange={e=>handleGradeChange(s.id,`s${n}`,e.target.value)}
+                            className="w-10 p-1 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold outline-none focus:ring-1 focus:ring-purple-500 focus:bg-white transition-all"/>
+                        </td>
+                      ))}
+                      <td className="p-1 bg-purple-50/20">
+                        <input type="number" min="0" max="100" value={g.sas||''} onChange={e=>handleGradeChange(s.id,'sas',e.target.value)}
+                          className="w-12 mx-auto block p-1 text-center bg-white border border-purple-200 rounded text-xs font-black text-purple-800 outline-none focus:ring-1 focus:ring-purple-500 transition-all"/>
                       </td>
-                    ))}
-                    <td className="p-1 bg-purple-50/20">
-                      <input type="number" min="0" max="100" value={g.akhir||''} onChange={e=>handleGradeChange(s.id,'akhir',e.target.value)} className="w-12 mx-auto block p-1 text-center bg-white border border-purple-200 rounded text-xs font-black text-purple-800 outline-none focus:ring-1 focus:ring-purple-500 transition-all"/>
-                    </td>
-                    <td className="p-1.5 text-center bg-emerald-50/20 font-black">
-                      <span className={`text-xs px-2 py-0.5 rounded border block w-10 mx-auto ${isRendah?'bg-rose-100 text-rose-700 border-rose-200':'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{final||'—'}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {students.length===0&&<tr><td colSpan="9" className="p-6 text-center text-slate-400 text-xs">Belum ada data siswa di kelas ini.</td></tr>}
-            </tbody>
-          </table>
+                      <td className="p-1.5 text-center bg-emerald-50/20 font-black">
+                        {final!==null ? (
+                          <span className={`text-xs px-1.5 py-0.5 rounded border block w-10 mx-auto ${isRendah?'bg-rose-100 text-rose-700 border-rose-200':'bg-emerald-100 text-emerald-700 border-emerald-200'}`}>{final}</span>
+                        ) : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!students.length&&<tr><td colSpan={jumlahS+4} className="p-6 text-center text-slate-400 text-xs">Belum ada data siswa.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100">
+            <p className="text-[10px] text-slate-400">* S=Sumatif Lingkup Materi · SAS=Sumatif Akhir Semester · Nilai Akhir = S({bobotS}%) + SAS({bobotSAS}%)</p>
+          </div>
         </div>
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex flex-wrap gap-x-5 gap-y-1">
-          <p className="text-[10px] text-slate-400">* <b>S</b> = Sumatif Lingkup Materi</p>
+      )}
+
+      {/* ── TAB FORMATIF TP ── */}
+      {activeTab==='formatif' && (
+        <>
+          {!tpList.length ? (
+            <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+              <p className="text-slate-400 text-sm mb-3">Belum ada Tujuan Pembelajaran untuk {mapelGuru} – {kelasAktif}.</p>
+              <button onClick={()=>setShowTpModal(true)} className="bg-purple-700 text-white px-5 py-2 rounded-xl font-bold text-sm hover:bg-purple-800 transition">+ Tambah TP</button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left whitespace-nowrap">
+                  <thead>
+                    <tr className="bg-slate-800 text-white text-xs">
+                      <th className="p-2 font-bold border-r border-slate-700 w-8 text-center">No</th>
+                      <th className="p-2 font-bold border-r border-slate-700 min-w-[160px]">Nama</th>
+                      {tpList.map((tp,i)=>(
+                        <th key={tp.id} className="p-2 text-center border-r border-slate-700 min-w-[60px]">
+                          <span className="block text-[10px] font-bold">TP{i+1}</span>
+                          <span className="block text-[9px] text-slate-300 font-normal max-w-[80px] truncate" title={tp.deskripsi}>{tp.deskripsi.slice(0,20)}</span>
+                        </th>
+                      ))}
+                      <th className="p-2 font-bold text-center min-w-[200px]">Deskripsi Auto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {students.map((s,idx)=>{
+                      const fRec = kelasFormatif.find(g=>g.siswaId===s.id)||{};
+                      const deskripsi = generateDeskFormatif(fRec);
+                      return (
+                        <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50 transition">
+                          <td className="p-1.5 text-center font-bold text-slate-400 text-xs border-r border-slate-100">{idx+1}</td>
+                          <td className="p-1.5 font-bold text-slate-800 text-xs border-r border-slate-100 truncate max-w-[160px]">{s.nama}</td>
+                          {tpList.map(tp=>(
+                            <td key={tp.id} className="p-1 border-r border-slate-100 text-center">
+                              <select value={fRec[`tp_${tp.id}`]||''} onChange={e=>handleFormatifChange(s.id,tp.id,e.target.value)}
+                                className="w-14 p-1 text-center bg-slate-50 border border-slate-200 rounded text-xs font-bold outline-none focus:ring-1 focus:ring-purple-400">
+                                <option value="">-</option>
+                                <option value="SB">SB</option>
+                                <option value="B">B</option>
+                                <option value="MB">MB</option>
+                              </select>
+                            </td>
+                          ))}
+                          <td className="p-2 text-[10px] text-slate-600 leading-relaxed max-w-[220px] whitespace-normal">
+                            {deskripsi||<span className="text-slate-300 italic">Belum ada nilai</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!students.length&&<tr><td colSpan={tpList.length+3} className="p-6 text-center text-slate-400 text-xs">Belum ada data siswa.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100">
+                <p className="text-[10px] text-slate-400">* SB=Sangat Baik · B=Baik · MB=Mulai Berkembang</p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── TAB KOKURIKULER ── */}
+      {activeTab==='kokurikuler' && (
+        <KokurikulerSection students={students} ctx={ctx} showToast={showToast} />
+      )}
+
+      {/* ── MODAL KELOLA TP ── */}
+      {showTpModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={e=>e.target===e.currentTarget&&setShowTpModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="p-4 flex items-center justify-between" style={{background:'linear-gradient(135deg,#5b21b6,#4338ca)'}}>
+              <h3 className="font-black text-white text-sm">🎯 Kelola TP — {mapelGuru} · {kelasAktif}</h3>
+              <button onClick={()=>setShowTpModal(false)} className="text-white/70 hover:text-white"><X size={18}/></button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2">
+                <p className="text-xs font-black text-slate-600 uppercase tracking-wide">{tpEditId?'✏ Edit TP':'+ Tambah TP Baru'}</p>
+                <textarea placeholder="Deskripsi TP (cth: Ananda mampu memahami materi...)" value={tpForm.deskripsi} onChange={e=>setTpForm(f=>({...f,deskripsi:e.target.value}))} rows={3}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-400 resize-none"/>
+                <div className="flex gap-2">
+                  <button onClick={handleTpSave} className="flex-1 bg-purple-700 text-white py-2 rounded-xl font-bold text-sm hover:bg-purple-800 transition">
+                    {tpEditId?'Simpan Perubahan':'+ Tambah TP'}
+                  </button>
+                  {tpEditId&&<button onClick={()=>{setTpEditId(null);setTpForm({deskripsi:''}); }} className="px-4 bg-slate-100 text-slate-600 py-2 rounded-xl font-bold text-sm hover:bg-slate-200 transition">Batal</button>}
+                </div>
+              </div>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {!tpList.length&&<p className="text-slate-400 text-xs text-center py-4">Belum ada TP.</p>}
+                {tpList.map((tp,i)=>(
+                  <div key={tp.id} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2">
+                    <span className="text-xs font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded shrink-0">TP{i+1}</span>
+                    <p className="flex-1 text-xs text-slate-700 leading-relaxed min-w-0">{tp.deskripsi}</p>
+                    <button onClick={()=>{setTpEditId(tp.id);setTpForm({deskripsi:tp.deskripsi||''});}} className="p-1.5 text-blue-400 hover:bg-blue-50 rounded-lg transition shrink-0"><Edit2 size={13}/></button>
+                    <button onClick={()=>handleTpDelete(tp.id)} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition shrink-0"><Trash2 size={13}/></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -5908,6 +6697,436 @@ const SettingsSection = ({ settings, profile, ctx, showToast }) => {
         <button onClick={handleSave} className="bg-purple-700 text-white px-8 py-3.5 rounded-xl font-bold hover:bg-purple-800 transition shadow-lg shadow-purple-200 flex items-center gap-2">
           <Check size={20}/> Simpan Semua Pengaturan
         </button>
+      </div>
+    </div>
+  );
+};
+
+
+// ==========================================
+// BUKU INDUK — Rekap Nilai Akhir per Siswa (semua mapel, termasuk guru mapel)
+// ==========================================
+const BUKU_INDUK_MAPEL = [
+  { key: 'PAI',                 label: 'Pendidikan Agama Islam dan Budi Pekerti', star: '*)',  external: 'db_guru_pai',            mapelEksternal: 'PAI' },
+  { key: 'Pendidikan Pancasila', label: 'Pendidikan Pancasila' },
+  { key: 'Bahasa Indonesia',     label: 'Bahasa Indonesia' },
+  { key: 'Matematika',           label: 'Matematika' },
+  { key: 'IPAS',                 label: 'Ilmu Pengetahuan Alam dan Sosial' },
+  { key: 'PJOK',                 label: 'Pendidikan Jasmani Olahraga dan Kesehatan', external: 'db_guru_pjok', mapelEksternal: 'PJOK' },
+  { key: 'Seni Budaya',          label: 'Seni dan Budaya', star: '**)' },
+  { key: 'Bahasa Inggris',       label: 'Bahasa Inggris', external: 'db_guru_bahasa_inggris', mapelEksternal: 'Bahasa Inggris' },
+  { key: 'Bahasa Madura',        label: 'Bahasa Madura' },
+];
+
+const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profile, settings }) => {
+  const [mapelGrades, setMapelGrades] = useState({});
+  const [nilaiSettingsMap, setNilaiSettingsMap] = useState({});
+  const [selectedSiswa, setSelectedSiswa] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tanggalBuku, setTanggalBuku] = useState(getTodayDate());
+
+  const EXTERNAL_DBIDS = ['db_guru_pai', 'db_guru_pjok', 'db_guru_bahasa_inggris'];
+  const MAPEL_DBID_BY_KEY = { PAI: 'db_guru_pai', PJOK: 'db_guru_pjok', 'Bahasa Inggris': 'db_guru_bahasa_inggris' };
+
+  // Ambil nilai dari guru mapel (PAI, PJOK, Bahasa Inggris) untuk kelas ini
+  useEffect(() => {
+    const unsubs = EXTERNAL_DBIDS.map(extDbId =>
+      onSnapshot(collection(db, 'users', extDbId, 'grades'), snap => {
+        const recs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setMapelGrades(prev => ({ ...prev, [extDbId]: recs }));
+      })
+    );
+    return () => unsubs.forEach(u => u());
+  }, []);
+
+  // Ambil pengaturan bobot nilai (jumlahS, bobotS, bobotSAS) untuk setiap mapel
+  // Guru kelas -> key: nilaiSettings_{Mapel}; Guru mapel -> key: nilaiSettings_mapel_{Mapel}_{Kelas}
+  useEffect(() => {
+    if (!ctx.dbId) return;
+    const unsubs = [];
+    BUKU_INDUK_MAPEL.forEach(m => {
+      if (m.external) {
+        const settingsKey = `${m.key.replace(/\s/g,'_')}_${ctx.loggedInKelas.replace(' ','_')}`;
+        unsubs.push(onSnapshot(doc(db, 'users', MAPEL_DBID_BY_KEY[m.key], 'data', `nilaiSettings_mapel_${settingsKey}`), snap => {
+          setNilaiSettingsMap(prev => ({ ...prev, [m.key]: snap.exists()
+            ? { jumlahS: snap.data().jumlahS??4, bobotS: snap.data().bobotS??70, bobotSAS: snap.data().bobotSAS??30 }
+            : { jumlahS:4, bobotS:70, bobotSAS:30 } }));
+        }));
+      } else {
+        unsubs.push(onSnapshot(doc(db, 'users', ctx.dbId, 'data', `nilaiSettings_${m.key.replace(/\s/g,'_')}`), snap => {
+          setNilaiSettingsMap(prev => ({ ...prev, [m.key]: snap.exists()
+            ? { jumlahS: snap.data().jumlahS??4, bobotS: snap.data().bobotS??70, bobotSAS: snap.data().bobotSAS??30 }
+            : { jumlahS:4, bobotS:70, bobotSAS:30 } }));
+        }));
+      }
+    });
+    return () => unsubs.forEach(u => u());
+  }, [ctx.dbId, ctx.loggedInKelas]);
+
+  // Gabungkan nilai lokal (guru kelas) + nilai dari guru mapel
+  const allGrades = React.useMemo(() => {
+    const eksternal = EXTERNAL_DBIDS.flatMap(extDbId =>
+      (mapelGrades[extDbId] || []).filter(g =>
+        g.kelas === ctx.loggedInKelas &&
+        g.tahun === ctx.activeTahun &&
+        g.semester === ctx.activeSemester
+      )
+    );
+    return [...grades, ...eksternal];
+  }, [grades, mapelGrades, ctx.loggedInKelas, ctx.activeTahun, ctx.activeSemester]);
+
+  const getNilaiAkhir = (siswaId, mapelKey) => {
+    const rec = allGrades.find(g => (g.siswaId === siswaId || g.id === siswaId) && g.mapel === mapelKey);
+    if (!rec) return null;
+    const ns = nilaiSettingsMap[mapelKey] || { jumlahS: 4, bobotS: 70, bobotSAS: 30 };
+    let sumS = 0, cntS = 0;
+    for (let n = 1; n <= ns.jumlahS; n++) {
+      const v = parseFloat(rec[`s${n}`]);
+      if (!isNaN(v)) { sumS += v; cntS++; }
+    }
+    const avgS = cntS > 0 ? sumS / cntS : 0;
+    const sas = parseFloat(rec.sas ?? rec.akhir);
+    if (avgS === 0 && (isNaN(sas) || sas === 0)) return null;
+    if (isNaN(sas) || sas === 0) return Math.round(avgS);
+    return Math.round(avgS * (ns.bobotS / 100) + sas * (ns.bobotSAS / 100));
+  };
+
+  const getAbsensiRecap = (siswaId) => {
+    const recs = (attendance || []).filter(a => a.siswaId === siswaId);
+    return {
+      sakit: recs.filter(a => a.status === 'Sakit').length,
+      izin:  recs.filter(a => a.status === 'Izin').length,
+      alpha: recs.filter(a => a.status === 'Alpha').length,
+    };
+  };
+
+
+  const buildRows = (siswaId) => {
+    return BUKU_INDUK_MAPEL.map((m, idx) => ({
+      no: idx + 1,
+      label: `${m.label}${m.star ? ' ' + m.star : ''}`,
+      nilai: getNilaiAkhir(siswaId, m.key),
+    }));
+  };
+
+  const hasFootnotes = BUKU_INDUK_MAPEL.some(m => m.star);
+
+  const getRataRata = (siswaId) => {
+    const vals = BUKU_INDUK_MAPEL.map(m => getNilaiAkhir(siswaId, m.key)).filter(v => v !== null);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  };
+
+  // Peringkat dihitung dari seluruh siswa di kelas (bukan hasil pencarian) berdasarkan rata-rata nilai
+  const rankingMap = React.useMemo(() => {
+    const withAvg = (students || [])
+      .map(s => ({ id: s.id, avg: getRataRata(s.id) }))
+      .filter(s => s.avg !== null)
+      .sort((a, b) => b.avg - a.avg);
+    const map = {};
+    withAvg.forEach((s, i) => { map[s.id] = i + 1; });
+    return map;
+  }, [students, allGrades, nilaiSettingsMap]);
+
+  const filteredStudents = (students || [])
+    .filter(s => s.nama.toLowerCase().includes(searchTerm.toLowerCase()))
+    .map(s => ({ ...s, _rank: rankingMap[s.id] || null, _avg: getRataRata(s.id) }))
+    .sort((a, b) => a.nama.localeCompare(b.nama));
+
+  const handleCetakPDF = async (siswa) => {
+    try {
+      showToast('Menyiapkan PDF Buku Induk...', 'success');
+      const JsPDF = await loadJsPDF();
+      await loadAutoTable();
+      const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210; const M = 15;
+      const namaSekolah = settings?.namaSekolah || 'SD NEGERI';
+      let y = M;
+
+      // KOP
+      const logoSize = 26;
+      if (settings?.logoUrl) {
+        try { pdf.addImage(settings.logoUrl, 'PNG', M, y, logoSize, logoSize); } catch (e) {}
+      }
+      const kopCenterX = W/2 + (settings?.logoUrl ? 4 : 0);
+      pdf.setFontSize(11); pdf.setFont('helvetica','normal'); pdf.setTextColor(15,30,80);
+      pdf.text('PEMERINTAH KABUPATEN PAMEKASAN', kopCenterX, y+4, {align:'center'});
+      pdf.text('DINAS PENDIDIKAN DAN KEBUDAYAAN', kopCenterX, y+8.5, {align:'center'});
+      pdf.setFontSize(15); pdf.setFont('helvetica','bold');
+      pdf.text(namaSekolah.toUpperCase(), kopCenterX, y+14.5, {align:'center'});
+      pdf.setFontSize(10); pdf.setFont('helvetica','normal'); pdf.setTextColor(60,60,60);
+      pdf.text('Jl. Raya Pasean Kec. Pasean-Pamekasan (69356)', kopCenterX, y+19, {align:'center'});
+      pdf.text('email: sdnegeribindang2@gmail.com', kopCenterX, y+23, {align:'center'});
+      y += 27;
+      pdf.setLineWidth(1); pdf.setDrawColor(15,30,80);
+      pdf.line(M, y, W-M, y);
+      pdf.setLineWidth(0.3);
+      pdf.line(M, y+1.5, W-M, y+1.5);
+      y += 6;
+
+      // JUDUL
+      pdf.setFontSize(11); pdf.setFont('helvetica','bold'); pdf.setTextColor(15,30,80);
+      pdf.text('BUKU INDUK — REKAPITULASI NILAI AKHIR', W/2, y, {align:'center'});
+      y += 8;
+
+      // IDENTITAS
+      pdf.setFillColor(240,245,255);
+      pdf.setDrawColor(190,205,240); pdf.setLineWidth(0.3);
+      pdf.rect(M, y, W-M*2, 30, 'FD');
+      pdf.setFontSize(8.5); pdf.setTextColor(30,30,30);
+      const iL = M+3; const iV = 65; const iL2 = 115; const iV2 = 158;
+      const rataRataSiswa = getRataRata(siswa.id);
+      const peringkatSiswa = rankingMap[siswa.id];
+      const idRows = [
+        ['Nama Peserta Didik', siswa.nama,                'Kelas',    ctx.loggedInKelas],
+        ['NIS / NISN',         `${siswa.nis||'-'} / ${siswa.nisn||'-'}`, 'Semester', ctx.activeSemester],
+        ['Tahun Pelajaran',    ctx.activeTahun,            'Jenis Kelamin', siswa.jk==='L'?'Laki-laki':'Perempuan'],
+        ['Rata-rata Nilai',    rataRataSiswa !== null ? rataRataSiswa.toFixed(1) : '-', 'Peringkat di Kelas', peringkatSiswa ? `Ke-${peringkatSiswa} dari ${Object.keys(rankingMap).length}` : '-'],
+      ];
+      idRows.forEach((r,i) => {
+        const ry = y + 5 + i*6.5;
+        pdf.setFont('helvetica','bold');   pdf.text(r[0], iL, ry);
+        pdf.setFont('helvetica','normal'); pdf.text(`: ${r[1]}`, iV, ry);
+        if (r[2]) {
+          pdf.setFont('helvetica','bold');   pdf.text(r[2], iL2, ry);
+          pdf.setFont('helvetica','normal'); pdf.text(`: ${r[3]}`, iV2, ry);
+        }
+      });
+      y += 34.5;
+
+      // TABEL NILAI
+      const rows = buildRows(siswa.id);
+      const tableRows = rows.map(r => [
+        r.no,
+        r.label,
+        r.nilai !== null ? Math.round(r.nilai).toString() : '-',
+      ]);
+
+      pdf.autoTable({
+        startY: y,
+        head: [['No','Mata Pelajaran','Nilai']],
+        body: tableRows,
+        theme: 'grid',
+        headStyles: { fillColor: [88,28,135], textColor: 255, fontSize: 9, fontStyle: 'bold', halign: 'center', cellPadding: 3 },
+        bodyStyles: { fontSize: 9, textColor: [30,30,30], cellPadding: 3 },
+        columnStyles: { 0: { halign:'center', cellWidth: 14 }, 1: { cellWidth: 'auto' }, 2: { halign:'center', cellWidth: 30 } },
+        margin: { left: M, right: M },
+      });
+
+      y = pdf.lastAutoTable.finalY + 4;
+
+      if (hasFootnotes) {
+        pdf.setFontSize(7.5); pdf.setFont('helvetica','italic'); pdf.setTextColor(90,90,90);
+        BUKU_INDUK_MAPEL.filter(m => m.star).forEach(m => {
+          let ket = '';
+          if (m.key === 'PAI') ket = `${m.star} Diisi sesuai dengan agama yang dianut oleh peserta didik`;
+          if (m.key === 'Seni Budaya') ket = `${m.star} Memilih salah satu dari Seni Musik, Seni Rupa, Seni Tari, atau Seni Teater`;
+          pdf.text(ket, M, y); y += 4;
+        });
+      }
+
+      // REKAP KEHADIRAN
+      const absRec = getAbsensiRecap(siswa.id);
+      y += 2;
+      pdf.setFontSize(9); pdf.setFont('helvetica','bold'); pdf.setTextColor(15,30,80);
+      pdf.text('Rekap Kehadiran', M, y);
+      y += 3;
+      pdf.autoTable({
+        startY: y,
+        head: [['Sakit','Izin','Alpha']],
+        body: [[absRec.sakit, absRec.izin, absRec.alpha]],
+        theme: 'grid',
+        headStyles: { fillColor: [88,28,135], textColor: 255, fontSize: 9, fontStyle: 'bold', halign: 'center', cellPadding: 2.5 },
+        bodyStyles: { fontSize: 9, textColor: [30,30,30], halign: 'center', cellPadding: 2.5, fontStyle: 'bold' },
+        margin: { left: M, right: M },
+        tableWidth: 90,
+      });
+      y = pdf.lastAutoTable.finalY;
+
+      // TANDA TANGAN
+      y += 6;
+      const kota = settings?.kotaTandatangan || '';
+      const today = new Date(tanggalBuku).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+      const namaGuru = profile?.nama || '-';
+      const nipGuru = profile?.nip || '-';
+      const namaKepsek = profile?.namaKepalaSekolah || '-';
+      const nipKepsek = profile?.nipKepalaSekolah || '-';
+
+      pdf.setFontSize(9); pdf.setFont('helvetica','normal'); pdf.setTextColor(30,30,30);
+      const leftX = M + 25; const rightX = W - M - 45;
+      pdf.text('Mengetahui,', leftX, y, {align:'center'});
+      pdf.text('Kepala Sekolah', leftX, y+5, {align:'center'});
+      pdf.text(`${kota}, ${today}`, rightX+20, y, {align:'center'});
+      pdf.text(`Guru ${ctx.loggedInKelas}`, rightX+20, y+5, {align:'center'});
+
+      pdf.setFont('helvetica','bold');
+      pdf.text(namaKepsek, leftX, y+25, {align:'center'});
+      pdf.text(namaGuru, rightX+20, y+25, {align:'center'});
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(8);
+      pdf.text(`NIP. ${nipKepsek}`, leftX, y+30, {align:'center'});
+      pdf.text(`NIP. ${nipGuru}`, rightX+20, y+30, {align:'center'});
+
+      pdf.save(`Buku_Induk_${siswa.nama.replace(/ /g,'_')}_${ctx.activeSemester}_${ctx.activeTahun.replace('/','_')}.pdf`);
+      showToast(`✅ Buku Induk ${siswa.nama} berhasil diunduh!`, 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Gagal membuat PDF Buku Induk', 'error');
+    }
+  };
+
+  // ====== DETAIL SISWA ======
+  if (selectedSiswa) {
+    const rows = buildRows(selectedSiswa.id);
+    return (
+      <div className="max-w-3xl mx-auto space-y-4 pb-10 animate-fade-in">
+        <div className="rounded-2xl p-3 md:p-4 flex items-center justify-between" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
+          <div>
+            <button onClick={() => setSelectedSiswa(null)} className="text-purple-200 text-xs font-bold mb-1 hover:text-white transition">← Kembali ke Daftar Siswa</button>
+            <h2 className="text-base font-black text-white">Buku Induk — {selectedSiswa.nama}</h2>
+            <p className="text-purple-200 text-xs mt-0.5">{ctx.loggedInKelas} · {ctx.activeSemester} · {ctx.activeTahun}</p>
+          </div>
+          <FileText className="text-white/40" size={32} />
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+          <div className="grid grid-cols-2 gap-3 text-sm bg-slate-50 border border-slate-100 rounded-xl p-4">
+            <div><span className="text-slate-400 block text-xs">Nama Peserta Didik</span><span className="font-bold text-slate-800">{selectedSiswa.nama}</span></div>
+            <div><span className="text-slate-400 block text-xs">Kelas</span><span className="font-bold text-slate-800">{ctx.loggedInKelas}</span></div>
+            <div><span className="text-slate-400 block text-xs">NIS / NISN</span><span className="font-bold text-slate-800">{selectedSiswa.nis||'-'} / {selectedSiswa.nisn||'-'}</span></div>
+            <div><span className="text-slate-400 block text-xs">Semester / Tahun</span><span className="font-bold text-slate-800">{ctx.activeSemester} · {ctx.activeTahun}</span></div>
+            <div><span className="text-slate-400 block text-xs">Peringkat di Kelas</span><span className="font-bold text-purple-700">{rankingMap[selectedSiswa.id] ? `Ke-${rankingMap[selectedSiswa.id]} dari ${Object.keys(rankingMap).length} siswa` : '-'}</span></div>
+            <div><span className="text-slate-400 block text-xs">Rata-rata Nilai</span><span className="font-bold text-purple-700">{getRataRata(selectedSiswa.id) !== null ? getRataRata(selectedSiswa.id).toFixed(1) : '-'}</span></div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-600 mb-1">Tanggal Buku Induk</label>
+            <input type="date" value={tanggalBuku} onChange={e => setTanggalBuku(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-purple-500 text-sm" />
+            <p className="text-[11px] text-slate-400 mt-1">Tanggal ini akan dicetak pada bagian tanda tangan PDF.</p>
+          </div>
+
+
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{background:'linear-gradient(135deg,#5b21b6,#4338ca)'}}>
+                  <th className="text-center p-3 text-white font-bold w-14">No</th>
+                  <th className="text-left p-3 text-white font-bold">Mata Pelajaran</th>
+                  <th className="text-center p-3 text-white font-bold w-28">Nilai</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="p-2.5 text-center font-bold text-slate-500">{r.no}</td>
+                    <td className="p-2.5 text-slate-700">{r.label}</td>
+                    <td className="p-2.5 text-center font-bold text-purple-700">
+                      {r.nilai !== null ? Math.round(r.nilai) : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-wide">Rekap Kehadiran</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(() => { const rec = getAbsensiRecap(selectedSiswa.id); return (
+                <>
+                  <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">
+                    <p className="text-[11px] text-amber-600 font-bold">Sakit</p>
+                    <p className="text-xl font-black text-amber-700">{rec.sakit}</p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                    <p className="text-[11px] text-blue-600 font-bold">Izin</p>
+                    <p className="text-xl font-black text-blue-700">{rec.izin}</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-center">
+                    <p className="text-[11px] text-red-600 font-bold">Alpha</p>
+                    <p className="text-xl font-black text-red-700">{rec.alpha}</p>
+                  </div>
+                </>
+              ); })()}
+            </div>
+          </div>
+
+
+          {hasFootnotes && (
+            <div className="text-[11px] text-slate-400 italic space-y-0.5 px-1">
+              {BUKU_INDUK_MAPEL.filter(m => m.star).map(m => (
+                <p key={m.key}>
+                  {m.star} {m.key === 'PAI'
+                    ? 'Diisi sesuai dengan agama yang dianut oleh peserta didik'
+                    : 'Memilih salah satu dari Seni Musik, Seni Rupa, Seni Tari, atau Seni Teater'}
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={() => setSelectedSiswa(null)} className="px-4 py-2.5 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition">Tutup</button>
+            <button onClick={() => handleCetakPDF(selectedSiswa)} className="px-5 py-2.5 bg-purple-700 text-white rounded-xl font-bold hover:bg-purple-800 transition shadow-lg shadow-purple-200 flex items-center gap-2">
+              <Download size={16}/> Cetak PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ====== DAFTAR SISWA ======
+  return (
+    <div className="max-w-3xl mx-auto space-y-4 pb-10 animate-fade-in">
+      <div className="rounded-2xl p-3 md:p-4" style={{background:'linear-gradient(135deg,#5b21b6 0%,#6d28d9 55%,#4338ca 100%)'}}>
+        <h2 className="text-base font-black text-white">Buku Induk</h2>
+        <p className="text-purple-200 text-xs mt-0.5">Rekap nilai akhir seluruh mata pelajaran per siswa · {ctx.activeSemester} · {ctx.activeTahun} · {ctx.loggedInKelas} · {students.length} Siswa</p>
+      </div>
+
+      <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+        <input
+          type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+          placeholder="Cari nama siswa..."
+          className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-medium outline-none focus:ring-2 focus:ring-purple-500 text-sm mb-3"
+        />
+        {!filteredStudents.length ? (
+          <p className="text-center py-8 text-slate-400 text-sm">Belum ada data siswa</p>
+        ) : (
+          <div className="space-y-1.5">
+            {filteredStudents.map((s, idx) => {
+              const totalMapel = BUKU_INDUK_MAPEL.length;
+              const adaNilai = BUKU_INDUK_MAPEL.filter(m => getNilaiAkhir(s.id, m.key) !== null).length;
+              return (
+                <button key={s.id} onClick={() => setSelectedSiswa(s)}
+                  className="w-full flex items-center justify-between p-2 rounded-lg border border-slate-100 hover:border-purple-200 hover:bg-purple-50/50 transition text-left">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-xs shrink-0">{idx+1}</div>
+                    <div>
+                      <p className="font-bold text-slate-800 text-xs">{s.nama}</p>
+                      <p className="text-[10px] text-slate-400">NIS/NISN: {s.nis||'-'} / {s.nisn||'-'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {s._rank !== null && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">
+                        Peringkat {s._rank}
+                      </span>
+                    )}
+                    {s._avg !== null && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">
+                        Rata² {s._avg.toFixed(1)}
+                      </span>
+                    )}
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${adaNilai === totalMapel ? 'bg-emerald-100 text-emerald-700' : adaNilai === 0 ? 'bg-slate-100 text-slate-400' : 'bg-amber-100 text-amber-700'}`}>
+                      {adaNilai}/{totalMapel} Nilai
+                    </span>
+                    <ChevronRight size={14} className="text-slate-300" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
