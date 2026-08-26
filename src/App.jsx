@@ -1050,6 +1050,14 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
   const [activeMenu, setActiveMenu] = React.useState('kalender');
   const [showRentangModal, setShowRentangModal] = React.useState(false);
 
+  // Koding dan Kecerdasan Artifisial hanya untuk guru kelas 5 dan kelas 6
+  const isKelas5Atau6Jadwal = ctx.loggedInKelas === 'Kelas 5' || ctx.loggedInKelas === 'Kelas 6';
+  const mapelOptionsJadwal = React.useMemo(() => (
+    isKelas5Atau6Jadwal
+      ? [...MAPEL_OPTIONS_AK, 'Koding dan Kecerdasan Artifisial']
+      : MAPEL_OPTIONS_AK
+  ), [isKelas5Atau6Jadwal]);
+
   // ── State Kalender ──
   const [awal, setAwal]   = React.useState('');
   const [akhir, setAkhir] = React.useState('');
@@ -1737,7 +1745,7 @@ const AkademikView = ({ ctx, settings, profile, showToast }) => {
                   onChange={e => setSesiForm(f => ({...f, mapel: e.target.value}))}
                   className="w-full border border-slate-200 bg-slate-50 rounded-xl p-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-400">
                   <option value="">-- Pilih Mata Pelajaran --</option>
-                  {MAPEL_OPTIONS_AK.map(m => <option key={m} value={m}>{m}</option>)}
+                  {mapelOptionsJadwal.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -4029,6 +4037,14 @@ const JournalSection = ({ journals, attendance, students, ctx, showToast, settin
   const [exportYear, setExportYear] = useState(getTodayDate().substring(0, 4));
   const [showModal, setShowModal] = useState(false);
 
+  // Koding dan Kecerdasan Artifisial hanya untuk guru kelas 5 dan kelas 6
+  const isKelas5Atau6Jurnal = ctx.loggedInKelas === 'Kelas 5' || ctx.loggedInKelas === 'Kelas 6';
+  const mapelOptionsJurnal = React.useMemo(() => (
+    isKelas5Atau6Jurnal
+      ? [...MAPEL_OPTIONS, 'Koding dan Kecerdasan Artifisial']
+      : MAPEL_OPTIONS
+  ), [isKelas5Atau6Jurnal]);
+
   // Helper: hitung kehadiran siswa untuk tanggal tertentu
   const getKehadiranSummary = (tanggal) => {
     const attTgl = (attendance || []).filter(a => a.tanggal === tanggal);
@@ -4264,7 +4280,7 @@ const JournalSection = ({ journals, attendance, students, ctx, showToast, settin
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Mata Pelajaran</label>
             <select value={formData.mapel} onChange={e => setFormData({...formData, mapel: e.target.value})} className="w-full bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-500 font-medium">
-              {MAPEL_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+              {mapelOptionsJurnal.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
           <div>
@@ -4378,10 +4394,18 @@ const ToolsSection = ({ tools, ctx, showToast, guruMapelMode }) => {
   const LAINNYA_CATEGORIES = ['Kokurikuler', 'Lainnya'];
   const ALL_CATEGORIES = [...MAPEL_CATEGORIES, ...LAINNYA_CATEGORIES];
 
+  // Koding dan Kecerdasan Artifisial hanya untuk guru kelas 5 dan kelas 6
+  const isKelas5Atau6Tools = !guruMapelMode && (ctx.loggedInKelas === 'Kelas 5' || ctx.loggedInKelas === 'Kelas 6');
+  const mapelOptionsTools = React.useMemo(() => (
+    isKelas5Atau6Tools
+      ? [...MAPEL_OPTIONS, 'Koding dan Kecerdasan Artifisial']
+      : MAPEL_OPTIONS
+  ), [isKelas5Atau6Tools]);
+
   // Tab: nama mapel/kelas, atau 'lainnya'
   const TAB_OPTIONS = guruMapelMode
     ? [...KELAS_OPTIONS, 'Lainnya']
-    : [...MAPEL_OPTIONS, 'Lainnya'];
+    : [...mapelOptionsTools, 'Lainnya'];
 
   const [formData, setFormData] = useState({ nama: '', jenis: 'Modul Ajar', link: '' });
   const [viewMapel, setViewMapel] = useState(guruMapelMode ? KELAS_OPTIONS[0] : MAPEL_OPTIONS[0]);
@@ -4982,6 +5006,14 @@ const generateDeskripsiFormatif = (tpList, nilaiPerTP) => {
 };
 
 const GradesSection = ({ students, grades, attendance, ctx, showToast }) => {
+  // Koding dan Kecerdasan Artifisial hanya untuk guru kelas 5 dan kelas 6
+  const isKelas5Atau6Nilai = ctx.loggedInKelas === 'Kelas 5' || ctx.loggedInKelas === 'Kelas 6';
+  const mapelOptionsRekap = React.useMemo(() => (
+    isKelas5Atau6Nilai
+      ? [...MAPEL_OPTIONS, 'Koding dan Kecerdasan Artifisial']
+      : MAPEL_OPTIONS
+  ), [isKelas5Atau6Nilai]);
+
   const [mapelAktif, setMapelAktif]       = useState(MAPEL_OPTIONS[0]);
   const [activeTab, setActiveTab]         = useState('sumatif');
   const [tpList, setTpList]               = useState([]);
@@ -5103,7 +5135,7 @@ const GradesSection = ({ students, grades, attendance, ctx, showToast }) => {
               ))}
             </div>
             <select value={mapelAktif} onChange={e=>setMapelAktif(e.target.value)} className="bg-white/20 border border-white/30 text-white px-2 py-1.5 rounded-xl font-bold text-xs outline-none">
-              {MAPEL_OPTIONS.map(m=><option key={m} value={m} style={{background:'#5b21b6'}}>{m}</option>)}
+              {mapelOptionsRekap.map(m=><option key={m} value={m} style={{background:'#5b21b6'}}>{m}</option>)}
             </select>
             {activeTab==='sumatif' && <>
               <button onClick={()=>setShowSettingsPanel(v=>!v)} className="flex items-center gap-1 bg-white/20 border border-white/30 text-white px-2.5 py-1.5 rounded-xl font-bold text-xs hover:bg-white/30 transition">⚙ Pengaturan</button>
@@ -6725,6 +6757,14 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
   const [searchTerm, setSearchTerm] = useState('');
   const [tanggalBuku, setTanggalBuku] = useState(getTodayDate());
 
+  // Koding dan Kecerdasan Artifisial hanya untuk guru kelas 5 dan kelas 6
+  const isKelas5Atau6 = ctx.loggedInKelas === 'Kelas 5' || ctx.loggedInKelas === 'Kelas 6';
+  const bukuIndukMapelList = React.useMemo(() => (
+    isKelas5Atau6
+      ? [...BUKU_INDUK_MAPEL, { key: 'Koding dan Kecerdasan Artifisial', label: 'Koding dan Kecerdasan Artifisial' }]
+      : BUKU_INDUK_MAPEL
+  ), [isKelas5Atau6]);
+
   const EXTERNAL_DBIDS = ['db_guru_pai', 'db_guru_pjok', 'db_guru_bahasa_inggris'];
   const MAPEL_DBID_BY_KEY = { PAI: 'db_guru_pai', PJOK: 'db_guru_pjok', 'Bahasa Inggris': 'db_guru_bahasa_inggris' };
 
@@ -6744,7 +6784,7 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
   useEffect(() => {
     if (!ctx.dbId) return;
     const unsubs = [];
-    BUKU_INDUK_MAPEL.forEach(m => {
+    bukuIndukMapelList.forEach(m => {
       if (m.external) {
         const settingsKey = `${m.key.replace(/\s/g,'_')}_${ctx.loggedInKelas.replace(' ','_')}`;
         unsubs.push(onSnapshot(doc(db, 'users', MAPEL_DBID_BY_KEY[m.key], 'data', `nilaiSettings_mapel_${settingsKey}`), snap => {
@@ -6761,7 +6801,7 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
       }
     });
     return () => unsubs.forEach(u => u());
-  }, [ctx.dbId, ctx.loggedInKelas]);
+  }, [ctx.dbId, ctx.loggedInKelas, bukuIndukMapelList]);
 
   // Gabungkan nilai lokal (guru kelas) + nilai dari guru mapel
   const allGrades = React.useMemo(() => {
@@ -6802,17 +6842,17 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
 
 
   const buildRows = (siswaId) => {
-    return BUKU_INDUK_MAPEL.map((m, idx) => ({
+    return bukuIndukMapelList.map((m, idx) => ({
       no: idx + 1,
       label: `${m.label}${m.star ? ' ' + m.star : ''}`,
       nilai: getNilaiAkhir(siswaId, m.key),
     }));
   };
 
-  const hasFootnotes = BUKU_INDUK_MAPEL.some(m => m.star);
+  const hasFootnotes = bukuIndukMapelList.some(m => m.star);
 
   const getRataRata = (siswaId) => {
-    const vals = BUKU_INDUK_MAPEL.map(m => getNilaiAkhir(siswaId, m.key)).filter(v => v !== null);
+    const vals = bukuIndukMapelList.map(m => getNilaiAkhir(siswaId, m.key)).filter(v => v !== null);
     if (!vals.length) return null;
     return vals.reduce((a, b) => a + b, 0) / vals.length;
   };
@@ -6917,7 +6957,7 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
 
       if (hasFootnotes) {
         pdf.setFontSize(7.5); pdf.setFont('helvetica','italic'); pdf.setTextColor(90,90,90);
-        BUKU_INDUK_MAPEL.filter(m => m.star).forEach(m => {
+        bukuIndukMapelList.filter(m => m.star).forEach(m => {
           let ket = '';
           if (m.key === 'PAI') ket = `${m.star} Diisi sesuai dengan agama yang dianut oleh peserta didik`;
           if (m.key === 'Seni Budaya') ket = `${m.star} Memilih salah satu dari Seni Musik, Seni Rupa, Seni Tari, atau Seni Teater`;
@@ -7054,7 +7094,7 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
 
           {hasFootnotes && (
             <div className="text-[11px] text-slate-400 italic space-y-0.5 px-1">
-              {BUKU_INDUK_MAPEL.filter(m => m.star).map(m => (
+              {bukuIndukMapelList.filter(m => m.star).map(m => (
                 <p key={m.key}>
                   {m.star} {m.key === 'PAI'
                     ? 'Diisi sesuai dengan agama yang dianut oleh peserta didik'
@@ -7094,8 +7134,8 @@ const BukuIndukSection = ({ students, grades, attendance, ctx, showToast, profil
         ) : (
           <div className="space-y-1.5">
             {filteredStudents.map((s, idx) => {
-              const totalMapel = BUKU_INDUK_MAPEL.length;
-              const adaNilai = BUKU_INDUK_MAPEL.filter(m => getNilaiAkhir(s.id, m.key) !== null).length;
+              const totalMapel = bukuIndukMapelList.length;
+              const adaNilai = bukuIndukMapelList.filter(m => getNilaiAkhir(s.id, m.key) !== null).length;
               return (
                 <button key={s.id} onClick={() => setSelectedSiswa(s)}
                   className="w-full flex items-center justify-between p-2 rounded-lg border border-slate-100 hover:border-purple-200 hover:bg-purple-50/50 transition text-left">
